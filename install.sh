@@ -205,7 +205,7 @@ install_astrid_from_github() {
   tmp="$(mktemp -d 2>/dev/null || mktemp -d -t astrid-install)"
   # shellcheck disable=SC2064
 
-  info "fetching Astrid release metadata from GitHub (${ASTRID_RELEASE_REPO})…"
+  info "fetching Astrid release metadata from GitHub (${ASTRID_RELEASE_REPO})..."
 
   if [ -n "${ASTRID_VERSION:-}" ]; then
     tag="v${ASTRID_VERSION#v}"
@@ -233,7 +233,7 @@ install_astrid_from_github() {
   asset="astrid-${version}-${target}.tar.gz"
   base="https://github.com/${ASTRID_RELEASE_REPO}/releases/download/${tag}"
 
-  info "downloading ${asset}…"
+  info "downloading ${asset}..."
   curl -fsSL --max-time 120 -o "$tmp/$asset" "${base}/${asset}" \
     || {
       warn "download failed: ${base}/${asset}"
@@ -261,9 +261,9 @@ install_astrid_from_github() {
   fi
   ok "SHA256 verified for $asset"
 
-  info "extracting into ${ASTRID_MANAGED_BIN}…"
+  info "extracting into ${ASTRID_MANAGED_BIN}..."
   tar -xzf "$tmp/$asset" -C "$tmp"
-  # Archive layout: astrid-${version}-${target}/astrid …
+  # Archive layout: astrid-${version}-${target}/astrid ...
   src=""
   for cand in "$tmp/astrid-${version}-${target}" "$tmp"; do
     if [ -f "$cand/astrid" ]; then src="$cand"; break; fi
@@ -324,7 +324,7 @@ install_astrid_from_github() {
 
 install_astrid_from_brew() {
   have_cmd brew || return 1
-  info "falling back to Homebrew…"
+  info "falling back to Homebrew..."
   brew tap "$BREW_TAP" 2>/dev/null || true
   brew install "${BREW_TAP}/${BREW_FORMULA}" || brew install "$BREW_FORMULA" || return 1
   ASTRID="$(command -v astrid)" || return 1
@@ -459,9 +459,9 @@ ensure_base_astrid() {
     return 0
   fi
   if [ "${UPGRADE:-0}" -eq 1 ]; then
-    info "re-applying base init (--upgrade)…"
+    info "re-applying base init (--upgrade)..."
   else
-    info "initializing default principal (base install)…"
+    info "initializing default principal (base install)..."
   fi
   if "$ASTRID" init -y 2>&1; then
     ok "base Astrid initialized"
@@ -526,12 +526,12 @@ wire_host() {
   info "distro: $distro"
 
   # default first (daemon uplink lives there), then per-principal
-  info "provisioning default principal (daemon uplink)…"
+  info "provisioning default principal (daemon uplink)..."
   if ! "$ASTRID" init --distro "$distro" -y 2>&1; then
     warn "init for default failed — continuing with principal $principal"
   fi
 
-  info "provisioning $principal…"
+  info "provisioning ${principal}..."
   "$ASTRID" init --distro "$distro" --principal "$principal" -y \
     || die "astrid init failed for $principal"
 
@@ -607,7 +607,7 @@ main() {
     detect_codex  && detected="${detected} codex"
     hosts="$detected"
     if [ -n "$hosts" ]; then
-      info "detected hosts:$(printf '%s' "$hosts" | sed 's/ /, /g')"
+      info "detected hosts: $(printf '%s' "$hosts" | sed 's/^ *//;s/  */, /g')"
     else
       info "no coding-host plugin detected (base Astrid is enough to start)"
     fi
