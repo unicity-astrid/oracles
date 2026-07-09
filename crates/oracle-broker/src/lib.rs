@@ -1,12 +1,12 @@
 //! Shared MCP broker for Astrid-governed oracle products.
 //!
-//! Product identity (Sage / Mimir / Sibyl) is injected via
-//! [`install`](profile::install). Thin product capsules call `install` then
+//! Astrid oracle identity is injected via
+//! [`install`](profile::install). The astrid-mcp capsule call `install` then
 //! forward host interceptors to the handlers re-exported here.
 //!
 //! The live execution door is the product-neutral `astrid.v1.request.mcp.*`
 //! surface. Product-local topics (`{product}.v1.tools.*`, audit) are derived
-//! from the installed [`oracle_core::ProductProfile`].
+//! from the installed [`oracle_core::OracleIdentity`].
 
 #![deny(unsafe_code)]
 #![deny(clippy::all)]
@@ -23,16 +23,16 @@ mod hook_gate;
 mod policy;
 mod profile;
 
-pub use oracle_core::{Product, ProductProfile};
-pub use profile::install;
+pub use oracle_core::{Host, HostProfile, OracleIdentity};
+pub use profile::{install, install_astrid};
 
 /// Capsule entry points — product-agnostic once [`install`] has run.
 pub mod handlers {
-    //! Interceptor-shaped handlers for thin product capsules.
+    //! Interceptor-shaped handlers for the astrid-mcp capsule.
 
     use astrid_sdk::prelude::*;
 
-    /// `{product}.v1.tools.describe` — assemble and publish the tool list.
+    /// `astrid.v1.tools.describe` — assemble and publish the tool list.
     pub fn describe_tools(_payload: serde_json::Value) -> Result<(), SysError> {
         crate::discovery::describe_tools();
         Ok(())

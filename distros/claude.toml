@@ -1,0 +1,67 @@
+# Astrid for Claude Code — one backend (astrid-mcp), host-specific supervisor/install.
+schema-version = 1
+
+[distro]
+id = "claude"
+name = "claude"
+pretty-name = "Astrid for Claude Code"
+version = "0.1.0"
+description = "Claude Code, governed by Astrid — shared oracle broker plus Claude supervisor/provisioner."
+maintainers = ["Joshua J. Bouw <dev@joshuajbouw.com>"]
+repository = "https://github.com/unicity-astrid/oracles"
+license = "MIT OR Apache-2.0"
+astrid-version = ">=0.9.1"
+
+[[capsule]]
+name = "astrid-capsule-cli"
+source = "@unicity-astrid/capsule-cli"
+version = "0.2.0"
+role = "uplink"
+
+[[capsule]]
+name = "sage"
+source = "@unicity-astrid/oracles"
+version = "0.1.0"
+[capsule.env]
+interaction_mode = "repl"
+auth_mode = "subscription"
+
+[[capsule]]
+name = "astrid-mcp"
+source = "@unicity-astrid/oracles"
+version = "0.1.0"
+
+[[capsule]]
+name = "sage-install"
+source = "@unicity-astrid/oracles"
+version = "0.1.0"
+
+[[capsule]]
+name = "astrid-capsule-forge"
+source = "@unicity-astrid/capsule-forge"
+version = "0.1.0"
+
+[[capsule]]
+name = "astrid-capsule-fs"
+source = "@unicity-astrid/capsule-fs"
+version = "0.1.0"
+
+[[capsule]]
+name = "astrid-capsule-http"
+source = "@unicity-astrid/capsule-http"
+version = "0.1.1"
+
+[[capsule]]
+name = "astrid-capsule-system"
+source = "@unicity-astrid/capsule-system"
+version = "0.1.0"
+
+[[capsule]]
+name = "astrid-capsule-skills"
+source = "@unicity-astrid/capsule-skills"
+version = "0.2.0"
+
+[[capsule]]
+name = "astrid-capsule-shell"
+source = "@unicity-astrid/capsule-shell"
+version = "0.2.0"

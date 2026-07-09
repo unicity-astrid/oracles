@@ -80,12 +80,12 @@
 //! at a time per capsule"*). A broker dispatch
 //! ([`crate::execute::dispatch_with_approval`]) holds that lock for the whole
 //! synchronous drain and returns the instant it observes ANY approval, so a
-//! second sage-mcp `handle_mcp_call` cannot run — and cannot be watching the
+//! second astrid-mcp `handle_mcp_call` cannot run — and cannot be watching the
 //! approval topic — while another is in flight. There is therefore at most
-//! ONE sage-mcp approval-watcher at a time: the only `astrid.v1.approval`
+//! ONE astrid-mcp approval-watcher at a time: the only `astrid.v1.approval`
 //! envelope it can observe during its window is the one ITS OWN routed tool
 //! raised (it published that tool's execute request and nothing else of
-//! sage-mcp's is running). Intra-capsule cross-talk is structurally
+//! astrid-mcp's is running). Intra-capsule cross-talk is structurally
 //! impossible — no claim registry is needed.
 //!
 //! The decision is independently routed correctly regardless: it targets
@@ -1031,7 +1031,7 @@ fn clamp(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     fn install_test_profile() {
-        crate::profile::install(&::oracle_core::ProductProfile::SAGE);
+        crate::profile::install_astrid();
     }
 
     use super::*;

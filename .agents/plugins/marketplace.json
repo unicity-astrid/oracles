@@ -1,16 +1,8 @@
 {
   "name": "astrid-oracles",
-  "owner": {
-    "name": "Unicity Labs"
-  },
-  "metadata": {
-    "description": "Astrid-governed oracle plugins (Sage / Mimir / Sibyl)"
-  },
+  "owner": { "name": "Unicity Labs" },
+  "metadata": { "description": "Astrid for Codex" },
   "plugins": [
-    {
-      "name": "astrid",
-      "source": "./plugins/sibyl",
-      "description": "Sibyl — Codex, governed by Astrid"
-    }
+    { "name": "astrid", "source": "./plugins/codex", "description": "Astrid — Codex host plugin" }
   ]
 }

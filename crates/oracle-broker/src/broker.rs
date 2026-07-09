@@ -1,9 +1,9 @@
 //! Broker front door — the sanitized `astrid.v1.*` MCP surface.
 //!
-//! This is sage-mcp's SECOND front door, sitting over the SAME
+//! This is astrid-mcp's SECOND front door, sitting over the SAME
 //! discovery ([`crate::discovery`]) and execute ([`crate::execute`])
 //! internals as the agent-runner path. Where the agent path serves the
-//! `mcp__sage__*` namespace Claude consumes via `--allowed-tools`, the
+//! `mcp__astrid__*` namespace Claude consumes via `--allowed-tools`, the
 //! broker serves a generic, third-party MCP client through a
 //! shim/proxy.
 //!
@@ -35,7 +35,7 @@
 //! sanitized `astrid.v1.*` surface. All `tool.v1.*` fan-out lives
 //! behind [`crate::execute::dispatch_with_approval`], which charset-gates
 //! the tool name before it can reach a routed topic. The list reply
-//! carries RAW MCP descriptors (no `mcp__sage__` prefix) because the
+//! carries RAW MCP descriptors (no `mcp__astrid__` prefix) because the
 //! broker is a standard MCP server, not the agent runner.
 //!
 //! ## Confused-deputy gate (state-mutating calls)
@@ -49,7 +49,7 @@
 //! under the per-(principal, source_id) KV key `mcp.ingress.trust.<source_id>`
 //! (see [`crate::execute::is_ingress_trusted`] and
 //! [`crate::approval::handle_mcp_ingress_respond`]). This stops a non-ingress
-//! capsule from puppeting sage-mcp into executing tools on a principal's
+//! capsule from puppeting astrid-mcp into executing tools on a principal's
 //! behalf without a human ever consenting to it. [`handle_mcp_list`] is
 //! read-only (it returns the public tool surface the proxy already publishes)
 //! and is NOT gated as strictly. See [`crate::execute::is_ingress_trusted`]
@@ -82,10 +82,10 @@ const MAX_REQ_ID_LEN: usize = 128;
 /// intentionally-unlisted tool the broker special-cases is invoked normally
 /// — no descriptor injection needed.
 ///
-/// ## Why a hook, when the `mcp__sage__*` plane is gated in-process
+/// ## Why a hook, when the `mcp__astrid__*` plane is gated in-process
 ///
 /// Native tools execute INSIDE the `claude` process and reach no Astrid
-/// chokepoint — unlike the `mcp__sage__*` tools, which funnel through
+/// chokepoint — unlike the `mcp__astrid__*` tools, which funnel through
 /// [`handle_mcp_call`] where the same [`crate::policy`] PDP refuses to
 /// dispatch a denied call un-bypassably. For native tools there is no such
 /// in-process point, so the PreToolUse hook is the ONLY per-call lever. The
@@ -125,7 +125,7 @@ struct ListRequest {
 ///
 /// Standard MCP `tools/call` shape (`name` + `arguments`) plus the
 /// proxy `req_id`. `name` is a RAW MCP tool name — the broker does not
-/// use the `mcp__sage__` prefix.
+/// use the `mcp__astrid__` prefix.
 #[derive(Debug, Deserialize)]
 struct CallRequest {
     req_id: String,
@@ -771,7 +771,7 @@ fn publish_reply(topic: &str, reply: &Value) {
 #[cfg(test)]
 mod tests {
     fn install_test_profile() {
-        crate::profile::install(&::oracle_core::ProductProfile::SAGE);
+        crate::profile::install_astrid();
     }
 
     use super::*;

@@ -218,7 +218,7 @@ fn now_ms() -> u64 {
 #[cfg(test)]
 mod tests {
     fn install_test_profile() {
-        crate::profile::install(&::oracle_core::ProductProfile::SAGE);
+        crate::profile::install_astrid();
     }
 
     use super::*;

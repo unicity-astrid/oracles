@@ -1,24 +1,25 @@
-//! Shared product identity for Astrid-governed oracles.
+//! Shared identity for Astrid oracles.
 //!
-//! Three products live in one monorepo:
-//! - **Sage** — Claude Code
-//! - **Mimir** — Grok Build
-//! - **Sibyl** — Codex
+//! An **oracle** is an external coding runtime (Claude Code, Grok Build, Codex)
+//! bound into Astrid. The backend is always Astrid — one MCP namespace, one
+//! broker capsule. Hosts differ only where the host product forces it
+//! (plugin hooks, principal family, optional supervisor).
 //!
-//! The MCP broker is shared. Host plugins differ (hooks, install paths,
-//! principal families). All wire-facing strings are derived from a single
-//! [`ProductProfile`] so product crates cannot drift string-by-string.
+//! Mythological product brands (Sage / Mimir / Sibyl) are retired: the legal
+//! and product surface is **Astrid**, not a co-branded third-party name.
 
 #![deny(unsafe_code)]
 #![deny(clippy::all)]
 #![deny(unreachable_pub)]
 #![warn(missing_docs)]
 
+mod host;
+mod identity;
 mod newtypes;
-mod product;
 
+pub use host::{Host, HostProfile};
+pub use identity::OracleIdentity;
 pub use newtypes::{
-    AuditTopicPrefix, BusNamespace, CapsuleName, DistroId, HostDisplayName, LogTag, McpNamespace,
-    McpToolPrefix, PrincipalFamily, Topic,
+    AuditTopicPrefix, CapsuleName, DistroId, HostDisplayName, LogTag, McpNamespace, McpToolPrefix,
+    PrincipalFamily, Topic,
 };
-pub use product::{Product, ProductProfile};

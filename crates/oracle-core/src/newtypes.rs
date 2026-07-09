@@ -1,7 +1,4 @@
-//! Newtype wrappers for product wire strings.
-//!
-//! These exist so call sites cannot mix a principal family with a bus
-//! namespace, or a log tag with an MCP prefix, without a type error.
+//! Newtype wrappers for wire strings.
 
 use core::fmt;
 
@@ -46,27 +43,23 @@ str_newtype!(
     DistroId
 );
 str_newtype!(
-    /// Default principal family for the host plugin (`claude-code`, …).
+    /// Default principal family for a host plugin (`claude-code`, …).
     PrincipalFamily
 );
 str_newtype!(
-    /// MCP server namespace segment used in `mcp__{ns}__*`.
+    /// MCP server namespace segment (`astrid` in `mcp__astrid__*`).
     McpNamespace
 );
 str_newtype!(
-    /// Full MCP tool name prefix including trailing `__` (e.g. `mcp__sage__`).
+    /// Full MCP tool name prefix including trailing `__` (`mcp__astrid__`).
     McpToolPrefix
 );
 str_newtype!(
-    /// Capsule package / component id (e.g. `sage-mcp`).
+    /// Capsule package / component id (`astrid-mcp`).
     CapsuleName
 );
 str_newtype!(
-    /// Product-local bus namespace (`sage` in `sage.v1.*`).
-    BusNamespace
-);
-str_newtype!(
-    /// Human host name for docs/logs (`Claude`, `Grok`, `Codex`).
+    /// Human host product name (`Claude Code`, `Grok Build`, `Codex`).
     HostDisplayName
 );
 str_newtype!(
@@ -74,10 +67,10 @@ str_newtype!(
     Topic
 );
 str_newtype!(
-    /// Prefix for product audit topics (`sage.v1.audit.`).
+    /// Prefix for Astrid oracle audit topics (`astrid.v1.audit.`).
     AuditTopicPrefix
 );
 str_newtype!(
-    /// Log line tag (`sage-mcp`).
+    /// Log line tag (`astrid-mcp`).
     LogTag
 );
