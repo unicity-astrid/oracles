@@ -11,12 +11,12 @@
 //! additional typed args may be added. The kernel runs the hook
 //! exactly once per (capsule, principal) install during a lifecycle
 //! phase that admits `astrid:elicit@1.0.0` and `astrid:kv@1.0.0`. The
-//! kernel has already walked the `[env]` block in `sage/Capsule.toml`
+//! kernel has already walked the `[env]` block in `claude-runner/Capsule.toml`
 //! by the time we run, so the operator's `interaction_mode` /
 //! `auth_mode` picks are available via `astrid_sdk::env::var(...)` as
 //! the literal `enum_values` strings declared there. The `api_key`
 //! secret has likewise been collected by the kernel into the host
-//! SecretStore — sage does NOT touch it from the hook; the spawn path
+//! SecretStore — the runner does NOT touch it from the hook; the spawn path
 //! reads it back at runtime via `env::var("api_key")`. Subscription-
 //! mode operators leave the prompt blank, which the CLI install path
 //! (`install_prompts.rs:93`) refuses to persist.
@@ -32,7 +32,7 @@
 //! than silently degrading to a default — an operator editing the
 //! per-principal env JSON out-of-band must hit a hard stop.
 //!
-//! Audit: emits `claude.v1.audit.install_choices` (covered by sage's
+//! Audit: emits `claude.v1.audit.install_choices` (covered by the runner's
 //! existing `claude.v1.audit.*` wildcard `[publish]` declaration).
 //!
 //! TODO(astrid-rfcs#TBD): mirror to a shared cross-capsule audit topic

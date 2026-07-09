@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-/// KV key prefix for sage session records.
+/// KV key prefix for Claude runner session records.
 pub(crate) const SESSION_KEY_PREFIX: &str = "claude.session";
 
 /// Per-principal cap on concurrently active sessions.
@@ -41,12 +41,12 @@ pub(crate) fn session_key(session_id: &str) -> String {
     format!("{SESSION_KEY_PREFIX}.{session_id}")
 }
 
-// NOTE: There is intentionally no sage-side install-complete key here.
+// NOTE: There is intentionally no runner-side install-complete key here.
 // Earlier revisions defined `install_complete_key` and had
 // `ensure_install` short-circuit on it, but the kernel scopes KV by
-// `{principal}:capsule:{capsule_id}` — sage and claude-install are
+// `{principal}:capsule:{capsule_id}` — runner and claude-install are
 // distinct capsule_ids with disjoint KV namespaces. The marker lives in
-// claude-install's namespace exclusively; sage gates on the published
+// claude-install's namespace exclusively; the runner gates on the published
 // `claude.v1.install.complete` event whose `already_installed: true`
 // flag is the cache-hit signal. See `lib.rs::ensure_install`.
 
@@ -61,7 +61,7 @@ pub(crate) struct SessionRecord {
     /// behaviour, just observability.
     pub os_pid: u32,
     /// Host-owned persistent process id. The `claude -p` child is spawned
-    /// on the persistent tier (`spawn_persistent`), so it survives a sage
+    /// on the persistent tier (`spawn_persistent`), so it survives a runner
     /// capsule reload; this id is how the supervisor's reload reconcile
     /// re-[`attach`](astrid_sdk::process::attach)es to keep driving the
     /// SAME process instead of abandoning the session. Empty only on
@@ -118,7 +118,7 @@ impl Sessions {
         let mut guard = self
             .inner
             .lock()
-            .map_err(|_| SysError::ApiError("sage session registry lock poisoned".into()))?;
+            .map_err(|_| SysError::ApiError("claude-runner session registry lock poisoned".into()))?;
         Ok(f(&mut guard))
     }
 
@@ -137,7 +137,7 @@ impl Sessions {
         let mut guard = self
             .reload_recovered
             .lock()
-            .map_err(|_| SysError::ApiError("sage reload-recovery flag lock poisoned".into()))?;
+            .map_err(|_| SysError::ApiError("claude-runner reload-recovery flag lock poisoned".into()))?;
         if *guard {
             Ok(false)
         } else {

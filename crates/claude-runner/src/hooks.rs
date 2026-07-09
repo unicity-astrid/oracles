@@ -33,8 +33,8 @@ use serde::Deserialize;
 use crate::topic_tail;
 
 /// KV prefix for per-session hook tokens. Composed with
-/// `(principal_id, session_id)` by [`hook_token_key`] to mirror sage's
-/// established `sage.<thing>.<id>.<id>` convention (see
+/// `(principal_id, session_id)` by [`hook_token_key`] to mirror the runner's
+/// established `claude.<thing>.<id>.<id>` convention (see
 /// `state::SESSION_KEY_PREFIX`).
 pub(crate) const HOOK_TOKEN_KEY_PREFIX: &str = "claude.hook_token";
 
@@ -54,7 +54,7 @@ const TOKEN_BYTES: usize = 32;
 /// window, and config / instructions / filesystem / MCP-elicitation
 /// observability. `hook.v1.event.*` is a wildcard publish, so the table
 /// widens with no cross-capsule contract change. `notification` has no
-/// canonical equivalent yet — sage republishes it on the sage-namespaced
+/// canonical equivalent yet — the runner republishes it on the claude-namespaced
 /// `claude.v1.notification` instead.
 ///
 /// SYNC: the SET of tails here MUST equal the set of `claude.v1.hook.<tail>`
@@ -109,7 +109,7 @@ pub(crate) const HOOK_TOPIC_MAP: &[(&str, &str)] = &[
 ];
 
 /// KV key for a session's hook token. The kernel scopes KV by
-/// `{principal}:capsule:{capsule_id}`, so this key sits inside sage's
+/// `{principal}:capsule:{capsule_id}`, so this key sits inside the runner's
 /// per-principal namespace; embedding `principal_id` in the key
 /// nonetheless lets the runner's run loop (which runs under the runner's own
 /// principal, not the claimed one) demand-fetch by the envelope's
@@ -192,7 +192,7 @@ pub(crate) fn tokens_match(claimed: &str, stored: &str) -> bool {
 /// Wire shape of an `claude.v1.hook.<name>` envelope as
 /// published by the native `astrid-emit` binary (core PR for
 /// unicity-astrid/astrid#814). `principal_id`, `session_id`, and
-/// `token` are claim-only transport fields — sage trusts none of
+/// `token` are claim-only transport fields — the runner trusts none of
 /// them until [`tokens_match`] succeeds against the KV-stored token.
 #[derive(Debug, Deserialize)]
 struct HookEnvelope {
@@ -227,7 +227,7 @@ fn canonical_topic_for(hook_name: &str) -> Option<&'static str> {
 ///
 /// `principal_id` rides INSIDE the body (not in kernel attribution
 /// metadata) because the republish is attributed to the runner's own capsule
-/// from the run-loop context — sage acts as a CA, and the principal
+/// from the run-loop context — the runner acts as a CA, and the principal
 /// claim has no other channel onto the wire.
 ///
 /// Pure function: no host calls, no IPC, no KV. Lifted out of
@@ -322,7 +322,7 @@ fn publish_spoof_audit(claimed_principal: &str, claimed_session: &str, hook: &st
 /// 5. Resolve the canonical republish topic via [`HOOK_TOPIC_MAP`].
 ///    Unknown hook names are audited and dropped.
 /// 6. Build the canonical republish body. Per the workflow brief,
-///    the `principal_id` rides INSIDE the payload because sage
+///    the `principal_id` rides INSIDE the payload because the runner
 ///    attributes the republish from its own run-loop context — the
 ///    principal claim has no other channel. The transport fields
 ///    `session_id` and `token` are stripped; subscribers never see
@@ -426,9 +426,9 @@ pub(crate) fn validate_and_route(messages: Vec<ipc::Message>) -> Result<(), SysE
 
 /// Lowercase-hex encode a byte slice. Mirrors the helper at
 /// `claude-install/src/atomic.rs:99-107`. Duplicated rather than shared
-/// across crates because (a) hex encode is six lines, (b) sage and
+/// across crates because (a) hex encode is six lines, (b) the runner and
 /// claude-install have no other shared utility crate, and (c) carving
-/// out a `sage-common` crate for this single helper is the wrong
+/// out an extra shared crate for this single helper is the wrong
 /// trade.
 fn hex_encode(bytes: &[u8]) -> String {
     const HEX: &[u8; 16] = b"0123456789abcdef";

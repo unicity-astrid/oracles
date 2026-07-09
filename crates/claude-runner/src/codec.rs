@@ -94,8 +94,8 @@ pub(crate) fn encode(frame: &Outbound<'_>) -> String {
 pub(crate) enum AssistantBlock {
     /// A `{type:"text",text:...}` block. `tool_use` blocks are dropped at
     /// decode: claude executes `mcp__astrid__*` tools directly against the
-    /// registered `astrid mcp serve` MCP server, so sage never sees or
-    /// dispatches them (the only assistant content sage relays is text).
+    /// registered `astrid mcp serve` MCP server, so the runner never sees or
+    /// dispatches them (the only assistant content the runner relays is text).
     Text { text: String },
 }
 
@@ -252,7 +252,7 @@ fn decode_assistant(value: &Value) -> Result<Decoded, CodecError> {
         let bty = block.get("type").and_then(Value::as_str).unwrap_or("");
         // Only `text` blocks are relayed. `tool_use` blocks are
         // intentionally dropped: claude executes them against the
-        // registered MCP server, so sage never sees or dispatches them.
+        // registered MCP server, so the runner never sees or dispatches them.
         // Thinking and any other block types ride through via StreamEvent
         // when --include-partial-messages is on.
         if bty == "text" {

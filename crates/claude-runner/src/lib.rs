@@ -222,7 +222,7 @@ impl ClaudeRunner {
         // Missing / malformed records still fall back fail-secure to
         // the default `{Headless, ApiKey}` at the current `SCHEMA_VERSION`
         // via the `Current` arm of `load_status` — preserves current
-        // behaviour for any principal that hasn't run sage's
+        // behaviour for any principal that hasn't run the runner's
         // `#[astrid::install]` hook yet.
         let cfg = match load_principal_config_status() {
             LoadOutcome::Current(cfg) => cfg,
@@ -241,9 +241,9 @@ impl ClaudeRunner {
                     }),
                 );
                 // Persist the patched record to the runner's own KV namespace
-                // BEFORE publishing the relink. sage and claude-install live
+                // BEFORE publishing the relink. runner and claude-install live
                 // in separate per-capsule KV namespaces (the canonical
-                // record sage reads on the next handle_spawn lives at
+                // record the runner reads on the next handle_spawn lives at
                 // `claude.principal.config` here, while claude-install only
                 // rewrites its own `.claude/` artifacts and its own
                 // install-complete marker). Without this `save`, every
