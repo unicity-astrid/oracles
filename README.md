@@ -17,7 +17,7 @@ settings. One shared backend; thin per-host adapters.
 optional adapters — only wired when that host is on the machine (or you ask).
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/unicity-astrid/oracles/main/install.sh | sh
+curl -fsSL https://astridos.org/install.sh | sh
 ```
 
 | Flag | Meaning |
@@ -28,12 +28,12 @@ curl -fsSL https://raw.githubusercontent.com/unicity-astrid/oracles/main/install
 | `--all` | Wire every oracle host (demos / power users) |
 
 ```bash
-curl -fsSL …/install.sh | sh -s -- --base-only
-curl -fsSL …/install.sh | sh -s -- --host claude
+curl -fsSL https://astridos.org/install.sh | sh -s -- --base-only
+curl -fsSL https://astridos.org/install.sh | sh -s -- --host claude
 ./install.sh --yes
 ```
 
-Canonical endpoint: raw GitHub (same file if served from GitHub Pages).
+Canonical endpoint: **https://astridos.org/install.sh** (GitHub Pages site repo `unicity-astrid.github.io`). This monorepo keeps a copy for local `./install.sh`.
 
 ## Architecture
 

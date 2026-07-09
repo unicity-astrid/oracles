@@ -2,7 +2,7 @@
 # install.sh — one-command Astrid installer (base OS + optional oracles)
 #
 # Website / GitHub Pages / raw:
-#   curl -fsSL https://raw.githubusercontent.com/unicity-astrid/oracles/main/install.sh | sh
+#   curl -fsSL https://astridos.org/install.sh | sh
 #
 # Product model:
 #   * Base Astrid is a complete install (daemon, CLI, default principal).
@@ -66,7 +66,7 @@ usage() {
   cat <<'EOF'
 Astrid Oracles installer
 
-  curl -fsSL https://raw.githubusercontent.com/unicity-astrid/oracles/main/install.sh | sh
+  curl -fsSL https://astridos.org/install.sh | sh
 
 Options:
   --host NAME     Wire claude | grok | codex (repeatable)
@@ -419,7 +419,7 @@ main() {
     say "  ${C_BOLD}astrid chat${C_RESET}       session (if your distro includes a model)"
     say ""
     say "Optional — wire a coding host when you use one:"
-    say "  curl -fsSL https://raw.githubusercontent.com/${ORACLES_REPO}/${ORACLES_REF}/install.sh | sh -s -- --host claude"
+    say "  curl -fsSL https://astridos.org/install.sh | sh -s -- --host claude"
     say "  ${C_DIM}(or re-run this installer after installing Claude / Grok / Codex)${C_RESET}"
     say ""
     exit 0
