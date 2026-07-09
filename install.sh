@@ -7,6 +7,9 @@
 # checkmark when it lands. Does CLI + base home + detected host plugins
 # (marketplace) + host capsules. Re-run upgrades everything in place.
 #
+# Before writing into host apps it lists what it detected and asks once —
+# Enter wires all, names pick a subset, n skips. -y or no TTY never asks.
+#
 # Flags ride after `sh -s --`:
 #
 #   curl -fsSL https://astridos.org/install.sh | sh -s -- --host claude --verbose
@@ -28,6 +31,7 @@ REQUESTED_HOSTS=""
 BIN_ROOT="${ASTRID_BIN_ROOT:-}"
 ASTRID=""
 FAILED=0
+ASSUME_YES=0
 SPIN_PID=""
 CLEAN_TMP=""
 SPIN_TTY=0
@@ -37,7 +41,9 @@ have() { command -v "$1" >/dev/null 2>&1; }
 say()  { printf '%s\n' "$*"; }
 
 # Run a subcommand quietly; pass its output through under --verbose.
-q() { if [ "$VERBOSE" -eq 1 ]; then "$@"; else "$@" >/dev/null 2>&1; fi; }
+# stdin is /dev/null: subcommands are non-interactive and must never eat
+# terminal input — the host-selection prompt is the only /dev/tty reader.
+q() { if [ "$VERBOSE" -eq 1 ]; then "$@" </dev/null; else "$@" </dev/null >/dev/null 2>&1; fi; }
 
 # --- status bar: box spinner + elapsed rectangle ----------------------------
 spin_start() {
@@ -93,12 +99,14 @@ usage() {
 curl -fsSL https://astridos.org/install.sh | sh
 
 One command: CLI, base home, plugins + capsules for hosts on this machine.
-Re-run any time to upgrade. Flags go after `sh -s --`:
+Detected hosts are listed first and wired after one Enter (names pick a
+subset, n skips). Re-run any time to upgrade. Flags go after `sh -s --`:
 
   curl -fsSL https://astridos.org/install.sh | sh -s -- --host claude --verbose
 
-  --host NAME   only this host (claude|grok|codex), repeatable
-  --all         every host
+  --host NAME   only this host (claude|grok|codex), repeatable — no prompt
+  --all         every host — no prompt
+  --yes, -y     wire all detected hosts without asking
   --base-only   skip host plugins/capsules
   --skip-init   skip base-home init
   --no-brew     never use Homebrew
@@ -128,7 +136,8 @@ while [ "$#" -gt 0 ]; do
       [ -n "$BIN_ROOT" ] || die "--bin-root needs a path"
       ;;
     --verbose|-v) VERBOSE=1 ;;
-    --yes|-y|--upgrade) ;; # accepted for compat (always non-interactive)
+    --yes|-y) ASSUME_YES=1 ;;
+    --upgrade) ;; # accepted for compat
     -h|--help) usage; exit 0 ;;
     *) die "unknown argument: $1 (try --help)" ;;
   esac
@@ -299,12 +308,43 @@ detect_hosts() {
   if [ "$BASE_ONLY" -eq 1 ]; then printf '%s' ""; return 0; fi
   if [ "$ALL_HOSTS" -eq 1 ]; then printf '%s' "claude grok codex"; return 0; fi
   if [ -n "$REQUESTED_HOSTS" ]; then printf '%s' "$REQUESTED_HOSTS"; return 0; fi
-  if have claude || [ -x "${HOME}/.claude/local/claude" ] || [ -d "${HOME}/.claude" ]; then
-    hosts="${hosts} claude"
-  fi
-  if have grok || [ -d "${HOME}/.grok" ]; then hosts="${hosts} grok"; fi
-  if have codex || [ -d "${HOME}/.codex" ]; then hosts="${hosts} codex"; fi
+  # A host counts only when its binary actually resolves — a stale dotdir
+  # must not pull plugins and capsules onto a machine that can't run them.
+  if have claude || [ -x "${HOME}/.claude/local/claude" ]; then hosts="${hosts} claude"; fi
+  if have grok; then hosts="${hosts} grok"; fi
+  if have codex; then hosts="${hosts} codex"; fi
   printf '%s' "$hosts"
+}
+
+# One Enter of consent before writing into other apps' configs (rustup-style):
+# Enter wires every detected host, names pick a subset, n skips. Prompts only
+# on a real terminal in pure-detection mode; flags, -y, and CI never block.
+choose_hosts() {
+  if [ "$#" -eq 0 ]; then printf ''; return 0; fi
+  if [ "$ASSUME_YES" -eq 1 ] || [ -n "$REQUESTED_HOSTS" ] || [ "$ALL_HOSTS" -eq 1 ]; then
+    printf '%s' "$*"
+    return 0
+  fi
+  if [ "$SPIN_TTY" -eq 0 ] || [ ! -r /dev/tty ]; then printf '%s' "$*"; return 0; fi
+  labels=""
+  for h in "$@"; do labels="${labels}${labels:+, }$(pretty "$h")"; done
+  printf '? hosts detected: %s\n  Enter = wire all · names to pick (e.g. claude codex) · n = skip: ' "$labels" > /dev/tty
+  IFS= read -r ans < /dev/tty || ans=""
+  case "$ans" in
+    "") printf '%s' "$*" ;;
+    n|N|no|NO|none) printf '' ;;
+    *)
+      picked=""
+      # shellcheck disable=SC2086
+      for tok in $ans; do
+        case "$tok" in
+          claude|grok|codex) picked="${picked} ${tok}" ;;
+          *) printf '! ignoring unknown host: %s\n' "$tok" > /dev/tty ;;
+        esac
+      done
+      printf '%s' "$picked"
+      ;;
+  esac
 }
 
 distro_url() { printf '%s/%s.toml\n' "$DISTRO_BASE" "$1"; }
@@ -391,7 +431,7 @@ install_plugin() {
       q grok plugin marketplace add "$ORACLES_REPO" || true
       q grok plugin marketplace update || true
       if grok_plugin_installed; then
-        gout="$(grok plugin update astrid 2>&1)" || true
+        gout="$(grok plugin update astrid </dev/null 2>&1)" || true
         if [ "$VERBOSE" -eq 1 ]; then say "$gout"; fi
         vers="$(printf '%s' "$gout" | sed -n 's/.*(\([^ ]*\) -> \([^)]*\)).*/\1 \2/p' | head -n1)"
         vfrom="${vers%% *}"
@@ -456,7 +496,7 @@ install_capsules() {
 
   had_lock=0
   if principal_has_lock "$p"; then had_lock=1; fi
-  iout="$("$ASTRID" init --distro "$d" --principal "$p" -y 2>&1)" && rc=0 || rc=$?
+  iout="$("$ASTRID" init --distro "$d" --principal "$p" -y </dev/null 2>&1)" && rc=0 || rc=$?
   if [ "$VERBOSE" -eq 1 ]; then say "$iout"; fi
   if [ "$rc" -eq 0 ]; then
     if [ "$had_lock" -eq 1 ]; then
@@ -484,10 +524,17 @@ main() {
   if [ "$#" -eq 0 ]; then
     ok "hosts (none detected — base only)"
   else
-    for h in "$@"; do
-      install_plugin "$h" || true
-      install_capsules "$h"
-    done
+    chosen="$(choose_hosts "$@")"
+    # shellcheck disable=SC2086
+    set -- $chosen
+    if [ "$#" -eq 0 ]; then
+      ok "hosts (skipped — base only)"
+    else
+      for h in "$@"; do
+        install_plugin "$h" || true
+        install_capsules "$h"
+      done
+    fi
   fi
 
   if [ "$FAILED" -gt 0 ]; then
