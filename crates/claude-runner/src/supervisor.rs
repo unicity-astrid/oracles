@@ -192,9 +192,9 @@ fn collect_events(session_id: &str, decoded: Decoded, out: &mut Vec<PendingEvent
         }
         Decoded::Assistant { content_blocks } => {
             // Tool execution is owned by the registered `astrid mcp serve`
-            // MCP server — claude calls it directly over MCP, so sage never
+            // MCP server — claude calls it directly over MCP, so the runner never
             // dispatches `mcp__astrid__*` tool calls itself (doing so would
-            // double-execute). Here sage only relays the assistant's text;
+            // double-execute). Here the runner only relays the assistant's text;
             // tool_use blocks are observe-only and dropped at decode.
             for block in content_blocks {
                 let AssistantBlock::Text { text } = block;
@@ -232,7 +232,7 @@ fn collect_events(session_id: &str, decoded: Decoded, out: &mut Vec<PendingEvent
         Decoded::ControlRequest { .. } | Decoded::UserToolResultEcho { .. } | Decoded::Ping => {
             // No-op. Control requests (permission gating, MCP transport)
             // are handled by claude itself against the registered MCP
-            // server, never by sage; tool_result echoes are
+            // server, never by the runner; tool_result echoes are
             // observability-only; ping is keepalive.
         }
         Decoded::Unknown(value) => {

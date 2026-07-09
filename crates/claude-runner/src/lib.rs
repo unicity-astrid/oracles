@@ -288,7 +288,7 @@ impl ClaudeRunner {
                         "reason": "schema_version_unsupported",
                         "got": got,
                         "expected": config::SCHEMA_VERSION,
-                        "hint": "upgrade sage or run --force install to rewrite the config",
+                        "hint": "upgrade the runner or run --force install to rewrite the config",
                     }),
                 );
                 return Ok(());
@@ -297,7 +297,7 @@ impl ClaudeRunner {
 
         // Repl mode short-circuit. No spawn, no identity fetch, no env
         // read — the user drives `claude` directly inside the principal
-        // folder and sage just publishes a structured rejection so the
+        // folder and the runner just publishes a structured rejection so the
         // CLI / uplink can hint at the right next step. Note we omit
         // `session_id` from the payload: in repl mode no session is
         // minted, so reflecting the (possibly caller-provided) id would
@@ -602,12 +602,12 @@ impl ClaudeRunner {
     /// Tool dispatch and approval routing are deliberately absent: claude
     /// drives `mcp__astrid__*` tools against the registered `astrid mcp
     /// serve` MCP server, and that server owns its own approval / timeout
-    /// handling — sage would only double-execute if it intervened.
+    /// handling — the runner would only double-execute if it intervened.
     #[astrid::run]
     fn run(&self) -> Result<(), SysError> {
         let stop_sub = ipc::subscribe("claude.v1.request.stop.*")?;
         let identity_sub = ipc::subscribe("tool.v1.execute.save_identity.result")?;
-        // Hook validator (sage-as-CA): `astrid-emit` (shipping in core
+        // Hook validator (runner-as-CA): `astrid-emit` (shipping in core
         // via astrid#814) stamps a per-session token onto every Claude
         // hook fire and publishes on `claude.v1.hook.<name>`.
         // The run loop drains those, verifies the token against KV,
@@ -816,7 +816,7 @@ pub(crate) fn classify_install_complete(payload: &str, principal_id: &str) -> In
 ///
 /// * claude-install owns idempotency. It writes the install-complete
 ///   marker into its OWN per-capsule KV namespace; the kernel scopes
-///   KV by `{principal}:capsule:{capsule_id}` so sage cannot read it
+///   KV by `{principal}:capsule:{capsule_id}` so the runner cannot read it
 ///   from here. The previous implementation tried to and silently
 ///   missed every time, forcing a full publish/subscribe round-trip on
 ///   every spawn — including for already-provisioned principals. That
@@ -842,11 +842,11 @@ fn ensure_install(principal_id: &str, cfg: &config::PrincipalConfig) -> EnsureIn
     // Thread the per-principal config in the install.run envelope so
     // claude-install can branch its `.claude/settings.local.json` +
     // `.mcp.json` writers without a cross-namespace KV read (claude-install
-    // lives in its own per-capsule KV namespace and can't peek at sage's
+    // lives in its own per-capsule KV namespace and can't peek at the runner's
     // `claude.principal.config` record directly — the kernel scopes KV
     // by `{principal}:capsule:{capsule_id}`). The receiver defaults to
     // `PrincipalConfig::default()` (i.e. `{Headless, ApiKey, v1}`) when
-    // the field is absent, preserving back-compat with older sage
+    // the field is absent, preserving back-compat with older runner
     // envelopes; see `claude-install::run_install` for that fallback.
     if let Err(e) = ipc::publish_json(
         "claude.v1.install.run",

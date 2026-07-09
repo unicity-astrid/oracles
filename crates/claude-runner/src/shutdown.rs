@@ -487,7 +487,7 @@ fn respawn_one(
     // attribution tuple as cold-spawn entries — without this a
     // subscription-mode respawn would be indistinguishable from an
     // api_key one in the audit stream. `interaction_mode` is omitted
-    // here: respawn is only reachable from sessions sage spawned itself
+    // here: respawn is only reachable from sessions the runner spawned itself
     // (i.e. headless), so the mode is implicit.
     // `claude.v1.event.<sid>.respawned` is the session-scoped event for
     // UI / metrics.

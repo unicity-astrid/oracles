@@ -114,11 +114,11 @@ api_key = { type = "secret", request = "Anthropic API key (leave blank for subsc
 # transport fields (principal_id, session_id, token) and re-emits on
 # the canonical Astrid hook topic. Subscribers trust the runner's attribution
 # ("runner as a CA") because the kernel attributes the republish from
-# sage's run-loop context; the principal_id rides inside the payload.
+# the runner's run-loop context; the principal_id rides inside the payload.
 "hook.v1.event.*" = "opaque"
 # Notification republish — Claude's `Notification` hook has no
 # canonical Astrid equivalent yet, so the runner republishes validated
-# notifications on a sage-namespaced topic. Forward-compatible: once a
+# notifications on a claude-namespaced topic. Forward-compatible: once a
 # canonical `notification.v1.*` topic lands, the validator switches.
 "claude.v1.notification" = "opaque"
 # Install-trigger published by `ensure_install` when no completion
@@ -133,7 +133,7 @@ api_key = { type = "secret", request = "Anthropic API key (leave blank for subsc
 # Settings-changed broadcast emitted after claude-install confirms the
 # on-disk rewrite. Carries the new `PrincipalConfig` so subscribers
 # (dashboards, audit sinks) can mirror the operator's choice without
-# re-reading sage's KV.
+# re-reading the runner's KV.
 "claude.v1.settings.changed" = "opaque"
 # Per-session identity-prompt build request to spark.
 "spark.v1.request.build" = "opaque"

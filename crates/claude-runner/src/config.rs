@@ -87,7 +87,7 @@ impl ModelPreference {
     }
 }
 
-/// Per-principal sage runtime configuration. Written by the runner's install
+/// Per-principal Claude runtime configuration. Written by the runner's install
 /// hook on first run, by `handle_settings_set` thereafter. Read by
 /// `handle_spawn` at the top of the spawn pipeline. Crate-private so
 /// the canonical record never leaks across the capsule boundary.
@@ -118,7 +118,7 @@ pub(crate) struct PrincipalConfig {
     #[serde(default)]
     pub(crate) max_turns: Option<u32>,
     /// Schema version. Always [`SCHEMA_VERSION`] for records written by
-    /// this version of sage.
+    /// this version of the runner.
     #[serde(default = "default_schema_version")]
     pub(crate) schema_version: u32,
 }
@@ -150,7 +150,7 @@ impl PrincipalConfig {
     /// since serde happily accepts any u32 there).
     ///
     /// Rejects strictly-future schema versions (a payload from a newer
-    /// sage that this binary cannot understand) while admitting
+    /// runner that this binary cannot understand) while admitting
     /// equal-or-older records so the caller can drive forward migration.
     /// Matches `claude-install::PrincipalConfig::validate`'s `>` check so
     /// the two crates agree on which records are accepted.
