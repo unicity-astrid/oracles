@@ -13,8 +13,10 @@ settings. One shared backend; thin per-host adapters.
 
 ## Install (one command)
 
-**Base Astrid is a complete product.** Oracles (Claude / Grok / Codex) are
-optional adapters — only wired when that host is on the machine (or you ask).
+**Base Astrid is a complete product.** The installer pulls the CLI/daemon from
+**GitHub Releases** (macOS + Linux; same assets as `astrid update`). Homebrew is
+an optional fallback only. Oracles are optional adapters — only wired when that
+host is on the machine (or you ask).
 
 ```bash
 curl -fsSL https://astridos.org/install.sh | sh

@@ -258,7 +258,8 @@ check_updates() {
     if [ -n "$_astrid_new" ]; then
       _cu_ctx="$_cu_ctx
   - Update the Astrid runtime:  astrid update -y
-    (On a Homebrew install that command defers to Homebrew — tell the user to run: brew upgrade astrid.)
+    (Self-managed installs under ~/.astrid/bin pull GitHub Releases — same as install.sh.
+     Homebrew installs: brew upgrade astrid. Linux without brew: astrid update -y only.)
   - Then re-provision this principal's capsules against the new runtime:
     astrid init --distro $ASTRID_DISTRO -y && astrid init --distro $ASTRID_DISTRO --principal $PRINCIPAL -y"
     fi

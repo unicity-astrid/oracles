@@ -9,7 +9,7 @@
 #   * Oracles (Claude / Grok / Codex) are optional host adapters on top.
 #
 # Behaviour (least surprise):
-#   1. Ensure the Astrid CLI is available (Homebrew / PATH / dev tree)
+#   1. Ensure the Astrid CLI (GitHub Releases → ~/.astrid/bin; brew last-resort)
 #   2. Ensure base runtime is initialized (astrid init -y when needed)
 #   3. Detect Claude Code / Grok / Codex on this machine
 #   4. Wire only those hosts (shared astrid-mcp + host distro) — never force all
@@ -72,7 +72,7 @@ Options:
   --host NAME     Wire claude | grok | codex (repeatable)
   --all           Wire every host (not the default)
   --yes, -y       Non-interactive (auto-yes; default when stdin is not a TTY)
-  --no-brew       Do not use Homebrew if astrid is missing
+  --no-brew       Do not fall back to Homebrew if GitHub Releases install fails
   --bin-root DIR  Prefer astrid + astrid-daemon from DIR
   --skip-init     Skip astrid init / principal provisioning
   -h, --help      Show this help
@@ -153,11 +153,173 @@ detect_codex() {
 }
 
 # ---------------------------------------------------------------------------
-# Astrid binary resolution
+# Astrid binary resolution — GitHub releases first (macOS + Linux)
 # ---------------------------------------------------------------------------
+# Brew is optional and uncommon on Linux. Primary path matches `astrid update`
+# and setup-astrid: download the release tarball into ~/.astrid/bin.
+ASTRID_RELEASE_REPO="${ASTRID_RELEASE_REPO:-unicity-astrid/astrid}"
+ASTRID_MANAGED_BIN="${ASTRID_HOME:-$HOME/.astrid}/bin"
+
 has_pair() {
   root="$1"
   [ -n "$root" ] && [ -x "$root/astrid" ] && [ -x "$root/astrid-daemon" ]
+}
+
+platform_target() {
+  os="$(uname -s 2>/dev/null || echo unknown)"
+  arch="$(uname -m 2>/dev/null || echo unknown)"
+  case "${os}/${arch}" in
+    Darwin/arm64|Darwin/aarch64) printf 'aarch64-apple-darwin\n' ;;
+    Darwin/x86_64)               printf 'x86_64-apple-darwin\n' ;;
+    Linux/x86_64|Linux/amd64)    printf 'x86_64-unknown-linux-gnu\n' ;;
+    Linux/aarch64|Linux/arm64)   printf 'aarch64-unknown-linux-gnu\n' ;;
+    *)
+      die "unsupported platform ${os}/${arch} — Astrid ships macOS and Linux (x86_64/arm64) release binaries"
+      ;;
+  esac
+}
+
+sha256_file() {
+  if have_cmd sha256sum; then
+    sha256sum "$1" | awk '{ print $1 }'
+  elif have_cmd shasum; then
+    shasum -a 256 "$1" | awk '{ print $1 }'
+  else
+    die "need sha256sum or shasum to verify the release archive"
+  fi
+}
+
+# Download latest (or ASTRID_VERSION) release into ~/.astrid/bin.
+install_astrid_from_github() {
+  target="$(platform_target)"
+  tmp="$(mktemp -d 2>/dev/null || mktemp -d -t astrid-install)"
+  # shellcheck disable=SC2064
+
+  info "fetching Astrid release metadata from GitHub (${ASTRID_RELEASE_REPO})…"
+
+  if [ -n "${ASTRID_VERSION:-}" ]; then
+    tag="v${ASTRID_VERSION#v}"
+  elif have_cmd curl; then
+    api="https://api.github.com/repos/${ASTRID_RELEASE_REPO}/releases/latest"
+    meta="$(curl -fsSL --max-time 30 \
+      ${GITHUB_TOKEN:+-H "Authorization: Bearer ${GITHUB_TOKEN}"} \
+      "$api")" || {
+        warn "could not query GitHub releases (network / rate limit)"
+        rm -rf "$tmp" 2>/dev/null || true
+        return 1
+      }
+    tag="$(printf '%s' "$meta" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
+    [ -n "$tag" ] || {
+      warn "latest release has no tag_name"
+      rm -rf "$tmp" 2>/dev/null || true
+      return 1
+    }
+  else
+    warn "curl is required to download Astrid from GitHub releases"
+    rm -rf "$tmp" 2>/dev/null || true
+    return 1
+  fi
+  version="${tag#v}"
+  asset="astrid-${version}-${target}.tar.gz"
+  base="https://github.com/${ASTRID_RELEASE_REPO}/releases/download/${tag}"
+
+  info "downloading ${asset}…"
+  curl -fsSL --max-time 120 -o "$tmp/$asset" "${base}/${asset}" \
+    || {
+      warn "download failed: ${base}/${asset}"
+      rm -rf "$tmp" 2>/dev/null || true
+      return 1
+    }
+  curl -fsSL --max-time 30 -o "$tmp/SHA256SUMS.txt" "${base}/SHA256SUMS.txt" \
+    || {
+      warn "could not download SHA256SUMS.txt"
+      rm -rf "$tmp" 2>/dev/null || true
+      return 1
+    }
+
+  expected="$(awk -v a="$asset" '$2 == a || $2 == "./"a || index($0, a) { print $1; exit }' "$tmp/SHA256SUMS.txt")"
+  [ -n "$expected" ] || {
+    warn "no checksum for $asset in SHA256SUMS.txt"
+    rm -rf "$tmp" 2>/dev/null || true
+    return 1
+  }
+  actual="$(sha256_file "$tmp/$asset")"
+  if [ "$expected" != "$actual" ]; then
+    warn "checksum mismatch for $asset (expected $expected, got $actual)"
+    rm -rf "$tmp" 2>/dev/null || true
+    return 1
+  fi
+  ok "SHA256 verified for $asset"
+
+  info "extracting into ${ASTRID_MANAGED_BIN}…"
+  tar -xzf "$tmp/$asset" -C "$tmp"
+  # Archive layout: astrid-${version}-${target}/astrid …
+  src=""
+  for cand in "$tmp/astrid-${version}-${target}" "$tmp"; do
+    if [ -f "$cand/astrid" ]; then src="$cand"; break; fi
+  done
+  [ -n "$src" ] || {
+    warn "archive missing astrid binary"
+    rm -rf "$tmp" 2>/dev/null || true
+    return 1
+  }
+
+  mkdir -p "$ASTRID_MANAGED_BIN"
+  for bin in astrid astrid-daemon astrid-build astrid-emit; do
+    if [ -f "$src/$bin" ]; then
+      cp "$src/$bin" "$ASTRID_MANAGED_BIN/$bin"
+      chmod +x "$ASTRID_MANAGED_BIN/$bin"
+    fi
+  done
+  [ -x "$ASTRID_MANAGED_BIN/astrid" ] || {
+    warn "install failed: $ASTRID_MANAGED_BIN/astrid not executable"
+    rm -rf "$tmp" 2>/dev/null || true
+    return 1
+  }
+  [ -x "$ASTRID_MANAGED_BIN/astrid-daemon" ] || {
+    warn "install failed: astrid-daemon missing"
+    rm -rf "$tmp" 2>/dev/null || true
+    return 1
+  }
+
+  # Current shell
+  export PATH="${ASTRID_MANAGED_BIN}:${PATH}"
+  ASTRID="$ASTRID_MANAGED_BIN/astrid"
+  export ASTRID_BIN_ROOT="$ASTRID_MANAGED_BIN"
+
+  # Persist PATH for future logins (idempotent)
+  path_line='export PATH="$HOME/.astrid/bin:$PATH"'
+  for rc in "$HOME/.zprofile" "$HOME/.zshrc" "$HOME/.bash_profile" "$HOME/.bashrc" "$HOME/.profile"; do
+    [ -f "$rc" ] || continue
+    if grep -qF '.astrid/bin' "$rc" 2>/dev/null; then
+      ok "PATH already mentions .astrid/bin in $rc"
+      break
+    fi
+  done
+  # Prefer zsh on macOS, bash profile on linux, else .profile
+  path_rc=""
+  case "$(uname -s 2>/dev/null)" in
+    Darwin) path_rc="$HOME/.zprofile" ;;
+    *)      path_rc="$HOME/.profile" ;;
+  esac
+  if [ -n "$path_rc" ] && ! grep -qF '.astrid/bin' "$path_rc" 2>/dev/null; then
+    printf '\n# Astrid CLI (github.com/%s releases)\n%s\n' "$ASTRID_RELEASE_REPO" "$path_line" >> "$path_rc"
+    ok "added ~/.astrid/bin to PATH in $path_rc (new shells)"
+  fi
+
+  ok "installed Astrid ${version} → ${ASTRID_MANAGED_BIN}"
+  rm -rf "$tmp" 2>/dev/null || true
+  return 0
+}
+
+install_astrid_from_brew() {
+  have_cmd brew || return 1
+  info "falling back to Homebrew…"
+  brew tap "$BREW_TAP" 2>/dev/null || true
+  brew install "${BREW_TAP}/${BREW_FORMULA}" || brew install "$BREW_FORMULA" || return 1
+  ASTRID="$(command -v astrid)" || return 1
+  ok "installed via Homebrew: $ASTRID"
+  return 0
 }
 
 resolve_astrid() {
@@ -172,6 +334,15 @@ resolve_astrid() {
   if [ -n "${ASTRID_BIN:-}" ] && [ -x "$ASTRID_BIN" ]; then
     ASTRID="$ASTRID_BIN"
     ok "using ASTRID_BIN=$ASTRID"
+    return 0
+  fi
+
+  # Prefer managed install dir even if something else is on PATH later
+  if has_pair "$ASTRID_MANAGED_BIN"; then
+    export PATH="${ASTRID_MANAGED_BIN}:${PATH}"
+    ASTRID="$ASTRID_MANAGED_BIN/astrid"
+    export ASTRID_BIN_ROOT="$ASTRID_MANAGED_BIN"
+    ok "using managed install at $ASTRID_MANAGED_BIN"
     return 0
   fi
 
@@ -195,22 +366,21 @@ resolve_astrid() {
     dir="$(dirname "$dir")"
   done
 
-  if [ "$NO_BREW" -eq 1 ]; then
-    die "astrid not found (and --no-brew). Install: brew install ${BREW_TAP}/${BREW_FORMULA}"
+  # Primary: GitHub Releases (macOS + Linux; matches astrid update / setup-astrid)
+  header "Install Astrid from GitHub Releases"
+  if install_astrid_from_github; then
+    return 0
   fi
 
-  if ! have_cmd brew; then
-    die "astrid not found and Homebrew missing.
-Install Homebrew from https://brew.sh then re-run, or:
-  brew install ${BREW_TAP}/${BREW_FORMULA}"
+  # Optional last resort: Homebrew (mostly macOS)
+  if [ "$NO_BREW" -eq 0 ] && install_astrid_from_brew; then
+    return 0
   fi
 
-  info "installing Astrid via Homebrew…"
-  brew tap "$BREW_TAP" 2>/dev/null || true
-  brew install "${BREW_TAP}/${BREW_FORMULA}" || brew install "$BREW_FORMULA" \
-    || die "Homebrew install failed"
-  ASTRID="$(command -v astrid)" || die "astrid still not on PATH after brew install"
-  ok "installed $ASTRID"
+  die "could not install Astrid.
+Tried: GitHub releases (${ASTRID_RELEASE_REPO}) then Homebrew.
+Manual: https://github.com/${ASTRID_RELEASE_REPO}/releases
+  or: brew install ${BREW_TAP}/${BREW_FORMULA}"
 }
 
 astrid_version() {
