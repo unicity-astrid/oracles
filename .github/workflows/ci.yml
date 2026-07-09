@@ -1,4 +1,4 @@
-name: ci
+name: CI
 
 on:
   push:
@@ -9,39 +9,89 @@ env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings
 
+# Matches rust-toolchain.toml / workspace.package.rust-version
+# (edition 2024 requires this floor).
 jobs:
-  test:
+  fmt:
+    name: Format
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: stable
+          toolchain: "1.94.0"
+          components: rustfmt
+      - run: cargo fmt --all -- --check
+
+  clippy-shared:
+    name: Clippy (shared, host)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.94.0"
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Clippy shared libraries
+        run: |
+          cargo clippy -p oracle-core -p oracle-broker -p oracle-host \
+            --all-targets --locked -- -D warnings
+
+  test:
+    name: Test (host)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.94.0"
+          targets: x86_64-unknown-linux-gnu
+      - uses: Swatinem/rust-cache@v2
+      # Capsule crates pin wasm via crates/*/.cargo/config.toml. Shared
+      # crates and unit tests run on the host target.
+      - name: Unit tests
+        run: |
+          cargo test -p oracle-core -p oracle-broker -p oracle-host \
+            -p claude-install -p claude-runner --lib --locked \
+            --target x86_64-unknown-linux-gnu
+
+  build-wasm:
+    name: Build (wasm capsules)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.94.0"
           targets: wasm32-unknown-unknown
-      - name: Shared libraries (native)
-        run: cargo test -p oracle-core -p oracle-broker -p oracle-host -p claude-install --lib
-      - name: Capsules (wasm)
+      - uses: Swatinem/rust-cache@v2
+      - name: Build all capsule crates
         run: |
-          cargo build -p astrid-mcp -p claude-runner -p claude-install -p claude-completion \
+          cargo build --locked --release \
+            -p astrid-mcp \
+            -p claude-runner -p claude-install -p claude-completion \
             -p codex-runner -p codex-install
-      - name: Plugin shell syntax
+
+  plugins:
+    name: Plugin shell syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: sh -n wrappers and common scripts
         run: |
-          set -e
-          for f in plugins/common/bin/* plugins/claude/bin/astrid-* plugins/grok/bin/astrid-* plugins/codex/bin/astrid-up; do
-            [ -f "$f" ] && [ ! -L "$f" ] || continue
+          set -euo pipefail
+          for f in \
+            plugins/common/bin/* \
+            plugins/claude/bin/astrid-* \
+            plugins/grok/bin/astrid-* \
+            plugins/codex/bin/astrid-up
+          do
+            [ -e "$f" ] || continue
+            [ -L "$f" ] && continue
+            [ -f "$f" ] || continue
             case "$f" in *statusline*) continue ;; esac
             head -1 "$f" | grep -qE 'sh|bash' || continue
             sh -n "$f"
+            echo "ok $f"
           done
-
-  clippy-shared:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: stable
-          components: clippy
-      - name: Clippy shared crates
-        run: |
-          cargo clippy -p oracle-core -p oracle-broker -p oracle-host --all-targets -- -D warnings

@@ -1,5 +1,9 @@
 # Astrid Oracles
 
+[![CI](https://github.com/unicity-astrid/oracles/actions/workflows/ci.yml/badge.svg)](https://github.com/unicity-astrid/oracles/actions/workflows/ci.yml)
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](#license)
+[![MSRV](https://img.shields.io/badge/MSRV-1.94-blue)](https://www.rust-lang.org)
+
 Governed host adapters for external coding agents on **Astrid OS**.
 
 An **oracle** is a host runtime (Claude Code, Grok Build, Codex) brought under
