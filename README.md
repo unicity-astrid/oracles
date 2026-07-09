@@ -10,6 +10,32 @@ An **oracle** is a host runtime (Claude Code, Grok Build, Codex) brought under
 Astrid’s protocol: MCP endpoints, principals, capabilities, install layout, and
 settings. One shared backend; thin per-host adapters.
 
+
+## Install (one command)
+
+Detects Claude Code / Grok / Codex on your machine and wires only those hosts
+into Astrid (shared `astrid-mcp` backend). Does **not** force every host.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/unicity-astrid/oracles/main/install.sh | sh
+```
+
+Useful variants:
+
+```bash
+# Explicit single host
+curl -fsSL …/install.sh | sh -s -- --host claude
+
+# Every host (demos / power users)
+curl -fsSL …/install.sh | sh -s -- --all
+
+# Local clone
+./install.sh --yes
+```
+
+GitHub Pages can serve the same file if you publish this repo; the raw URL above
+is the canonical endpoint until then.
+
 ## Architecture
 
 ```
