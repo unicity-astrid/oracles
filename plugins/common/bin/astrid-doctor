@@ -1,6 +1,7 @@
 #!/usr/bin/env sh
-# astrid-doctor — diagnose the Astrid runtime backing this Claude Code
-# session and report what the agent is (its principal) and what governs it.
+# astrid-doctor — diagnose the Astrid runtime backing this host session
+# (Claude Code / Grok Build / Codex) and report what the agent is (its
+# principal) and what governs it.
 #
 # Two output modes:
 #   --format human  (default)  human-readable report on stdout, for the
@@ -429,9 +430,14 @@ case "$ASTRID_HOST" in
   codex) ASTRID_DISTRO="${ASTRID_DISTRO:-codex}"; DEFAULT_PRINCIPAL=codex-code ;;
   *)     ASTRID_DISTRO="${ASTRID_DISTRO:-claude}"; DEFAULT_PRINCIPAL=claude-code ;;
 esac
-# Prefer configured principal; if still default and host has a family default, use it.
-if [ "$PRINCIPAL" = "default" ] && [ -n "${DEFAULT_PRINCIPAL:-}" ]; then
-  : # keep operator default unless host plugin option set
+# Host plugins act as the family principal unless the host exported an
+# explicit plugin option (Claude userConfig → CLAUDE_PLUGIN_OPTION_PRINCIPAL).
+# Do not leave SessionStart stuck on admin `default` when MCP is wired to
+# claude-code / grok-code / codex-code.
+if [ -z "${CLAUDE_PLUGIN_OPTION_PRINCIPAL:-${CLAUDE_PLUGIN_OPTION_principal:-}}" ]; then
+  if [ -z "$PRINCIPAL" ] || [ "$PRINCIPAL" = "default" ]; then
+    PRINCIPAL="$DEFAULT_PRINCIPAL"
+  fi
 fi
 
 # Best-effort, rate-limited update nudge. Placed AFTER the not-installed guard

@@ -17,7 +17,10 @@ use oracle_host::{
 };
 
 /// Artifact shape for managed `.codex/` files.
-const ARTIFACT_VERSION: u32 = 2;
+///
+/// v3: SessionStart doctor prefers the Codex plugin `bin/astrid-doctor` (update
+/// clocks). Core `astrid doctor` has no `--format hook` and is not a substitute.
+const ARTIFACT_VERSION: u32 = 3;
 
 struct CodexLayout;
 
@@ -66,6 +69,10 @@ model_verbosity = "medium"
 hooks = true
 "#,
         )?;
+        // SessionStart doctor: plugin path first (has runtime/plugin/distro
+        // update clocks + host playbook). Fall back to no-op — core `astrid
+        // doctor` has no hook JSON format. Full policy hooks live in the
+        // marketplace plugin (`plugins/codex/hooks/hooks.json`).
         write_atomic(
             "home://.codex/hooks.json",
             br#"{
@@ -76,9 +83,9 @@ hooks = true
         "hooks": [
           {
             "type": "command",
-            "command": "astrid doctor --format hook",
+            "command": "root=\"${PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-}}\"; if [ -x \"$root/bin/astrid-doctor\" ]; then \"$root/bin/astrid-doctor\" --format hook; else exit 0; fi",
             "timeout": 15,
-            "statusMessage": "Checking Astrid"
+            "statusMessage": "Checking Astrid updates"
           }
         ]
       }

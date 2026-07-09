@@ -7,7 +7,8 @@
     "name": "Unicity Labs",
     "email": "info@unicity-labs.com"
   },
-  "homepage": "https://github.com/unicity-astrid/astrid",
+  "homepage": "https://github.com/unicity-astrid/oracles",
+  "repository": "https://github.com/unicity-astrid/oracles",
   "license": "MIT OR Apache-2.0",
   "keywords": [
     "astrid",

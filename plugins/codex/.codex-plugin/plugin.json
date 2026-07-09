@@ -1,17 +1,16 @@
 {
-  "name": "codex",
+  "name": "astrid",
   "version": "0.1.0",
-  "description": "Run Codex as Astrid, a governed Astrid agent with Astrid docs, MCP, and hooks.",
+  "description": "Run Codex as a governed Astrid agent: capsule tools over MCP, SessionStart update doctor, host policy hooks, and a codex-code principal.",
   "author": {
     "name": "Unicity Labs",
     "email": "info@unicity-labs.com"
   },
-  "homepage": "https://github.com/unicity-astrid/astrid",
-  "repository": "https://github.com/unicity-astrid/codex",
+  "homepage": "https://github.com/unicity-astrid/oracles",
+  "repository": "https://github.com/unicity-astrid/oracles",
   "license": "MIT OR Apache-2.0",
   "keywords": [
     "astrid",
-    "codex",
     "codex",
     "agent",
     "mcp",
@@ -19,10 +18,11 @@
   ],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
+  "hooks": "./hooks/hooks.json",
   "interface": {
     "displayName": "Astrid",
     "shortDescription": "Govern Codex through Astrid OS.",
-    "longDescription": "Adds Astrid operating instructions, MCP server configuration, and hook defaults so Codex can act as Astrid, a principal-scoped Astrid agent.",
+    "longDescription": "Adds Astrid operating instructions, MCP server configuration, SessionStart doctor, and hook defaults so Codex can act as a principal-scoped Astrid agent.",
     "developerName": "Unicity Labs",
     "category": "Productivity",
     "capabilities": [

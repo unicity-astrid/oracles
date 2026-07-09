@@ -1,21 +1,25 @@
 {
-  "name": "mimir",
+  "name": "astrid",
+  "displayName": "Astrid",
   "version": "0.1.0",
-  "description": "Run Grok Build as a governed Astrid agent: capsule tools over MCP, an ephemeral self-cleaning daemon, a SessionStart readiness doctor, /mimir:* operator commands, forge skill, and a grok-code principal. Installing this plugin turns a vanilla Grok session into an Astrid-integrated session.",
+  "description": "Run Grok Build as a governed Astrid agent: capsule tools over MCP, an ephemeral self-cleaning daemon, a SessionStart readiness doctor, /astrid:* operator commands, forge skill, and a grok-code principal. Installing this plugin turns a vanilla Grok session into an Astrid-integrated session.",
   "author": {
     "name": "Unicity Labs",
     "email": "info@unicity-labs.com"
   },
-  "homepage": "https://github.com/unicity-astrid/mimir",
-  "repository": "https://github.com/unicity-astrid/mimir",
+  "homepage": "https://github.com/unicity-astrid/oracles",
+  "repository": "https://github.com/unicity-astrid/oracles",
   "license": "MIT OR Apache-2.0",
   "keywords": [
     "astrid",
-    "mimir",
     "mcp",
     "agent",
     "runtime",
     "capsule",
     "grok"
-  ]
+  ],
+  "mcpServers": "./.mcp.json",
+  "hooks": "./hooks/hooks.json",
+  "commands": "./commands",
+  "skills": "./skills"
 }

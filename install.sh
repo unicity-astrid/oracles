@@ -522,11 +522,11 @@ plugin_hint() {
       ;;
     grok)
       say "  ${C_DIM}Plugin:${C_RESET} grok plugin install <path-to-oracles>/plugins/grok --trust"
-      say "           (or clone ${ORACLES_REPO} and point Grok at plugins/grok)"
+      say "           then enable the ${C_BOLD}astrid${C_RESET} plugin (Grok Build)"
       ;;
     codex)
       say "  ${C_DIM}Plugin:${C_RESET} install plugins/codex from ${ORACLES_REPO}"
-      say "           (Codex marketplace: .agents/plugins)"
+      say "           enable the ${C_BOLD}astrid${C_RESET} plugin (Codex · .agents/plugins)"
       ;;
   esac
 }

@@ -92,7 +92,7 @@ the same `astrid mcp serve` surface.
 **Dev / today — load it raw, no install:**
 
 ```sh
-claude --plugin-dir /path/to/sage/astrid-plugin
+claude --plugin-dir /path/to/oracles/plugins/claude
 ```
 
 Leave the principal at its `claude-code` default (a scoped agent in the `claude`

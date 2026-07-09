@@ -11,12 +11,17 @@ Astrid is the backend. This directory is the **Grok host adapter** (hooks + MCP 
 ## Install
 
 ```bash
-# From the oracles monorepo:
-grok plugin install /path/to/oracles/plugins/grok --trust
-grok plugin enable astrid   # or whatever name your marketplace uses
+# Marketplace (when published) or local path:
+grok plugin marketplace add unicity-astrid/oracles   # or a local clone
+# or: grok plugin install /path/to/oracles/plugins/grok --trust
+grok plugin enable astrid
 
-astrid init --distro /path/to/oracles/distros/grok.toml -y
-astrid init --distro /path/to/oracles/distros/grok.toml --principal grok-code -y
+# Distro (shared backend + principal):
+curl -fsSL https://astridos.org/install.sh | sh -s -- --host grok
+# or: astrid init --distro distros/grok.toml --principal grok-code -y
 ```
 
-Shared shell logic lives in `plugins/common/bin/`. Host wrappers only set `ASTRID_HOST` / plugin root env.
+Plugin name is **`astrid`** (matches `.grok-plugin/marketplace.json`). Shared
+shell logic lives in `plugins/common/bin/`. Host wrappers only set `ASTRID_HOST`
+/ plugin root env. SessionStart runs `bin/astrid-doctor` (runtime + plugin +
+distro update clocks, ~24h rate limit).
