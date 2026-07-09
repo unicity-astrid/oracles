@@ -2,13 +2,8 @@
   "mcpServers": {
     "astrid": {
       "command": "${GROK_PLUGIN_ROOT}/bin/astrid-up",
-      "args": [
-        "--principal",
-        "grok-code"
-      ],
-      "env": {
-        "ASTRID_BIN_ROOT": "/Users/joshuaj.bouw/dev/astrid.worktrees/agent6/core/target/debug"
-      }
+      "args": ["--principal", "grok-code"],
+      "env": {}
     }
   }
 }

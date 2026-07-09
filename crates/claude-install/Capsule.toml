@@ -42,6 +42,6 @@ kv = []
 # Audit events emitted by claude-install (e.g. `relink_completed`,
 # `install_completed`). Declared as a wildcard so future audit
 # variants can be added without re-touching the manifest. Mirrors the
-# `claude.v1.audit.*` declaration on the sage crate; cross-capsule audit
+# `claude.v1.audit.*` declaration on the claude-runner crate; cross-capsule audit
 # convention is not yet established (see TODO at each emit site).
 "claude.v1.audit.*" = "opaque"
