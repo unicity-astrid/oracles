@@ -1,0 +1,20 @@
+[package]
+name = "sage-mcp"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "MCP broker capsule for sage (thin product wrapper over agent-broker)"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+agent-broker.workspace = true
+agent-core.workspace = true
+astrid-sdk.workspace = true
+serde.workspace = true
+serde_json.workspace = true

@@ -1,0 +1,451 @@
+#!/usr/bin/env sh
+# astrid-doctor — diagnose the Astrid runtime backing this Grok Build
+# session and report what the agent is (its principal) and what governs it.
+#
+# Two output modes:
+#   --format human  (default)  human-readable report on stdout, for the
+#                              /astrid:doctor slash command.
+#   --format hook              a SessionStart hook payload on stdout
+#                              ({hookSpecificOutput.additionalContext}),
+#                              so the live session is told it's an Astrid
+#                              agent and shown any readiness gap + the fix.
+#
+# READ-ONLY: this never boots, stops, or mutates anything — bin/astrid-up
+# owns the daemon lifecycle. The doctor only observes, so it can race the
+# wrapper's boot harmlessly. It ALWAYS exits 0 (a SessionStart hook must
+# never wedge startup); unreachable state is reported, not fatal.
+set -eu
+
+MODE="human"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --format) MODE="${2:-human}"; shift 2 ;;
+    --format=*) MODE="${1#--format=}"; shift ;;
+    *) shift ;;
+  esac
+done
+
+# Update-nudge state, consumed by emit(): NUDGE_MSG is a user-visible
+# systemMessage; NUDGE_CTX is an additionalContext appendix telling the model
+# how to perform the update. Both stay empty unless check_updates (below) finds
+# something stale, so when nothing is pending emit()'s output is byte-for-byte
+# what it always was.
+NUDGE_MSG=""
+NUDGE_CTX=""
+
+# Drain stdin in hook mode (Grok Build pipes the SessionStart JSON in); we
+# don't need its fields, but leaving the pipe unread can wedge the caller.
+if [ "$MODE" = "hook" ]; then
+  cat >/dev/null 2>&1 || true
+fi
+
+# Resolve the astrid binary the same way bin/astrid-up does (shared resolver:
+# ASTRID_BIN{,_ROOT} / .mcp.json / nearby core/target / installed / PATH).
+ASTRID_PLUGIN_ROOT="$(CDPATH= cd -- "$(dirname "$0")/.." 2>/dev/null && pwd -P)" \
+  || ASTRID_PLUGIN_ROOT="$(dirname "$(dirname "$0")")"
+# shellcheck source=lib-astrid-resolve.sh
+. "$ASTRID_PLUGIN_ROOT/bin/lib-astrid-resolve.sh"
+ASTRID=""
+ASTRID_DAEMON=""
+ASTRID_SOURCE=""
+if astrid_resolve_apply; then
+  :
+else
+  ASTRID=""
+fi
+
+# JSON-escape a string for embedding inside a "..." literal: backslash, double
+# quote, and embedded newlines (as \n). Sufficient for the text we author here
+# (ASCII plus a leading 🔔, a valid UTF-8 JSON string).
+json_escape() {
+  printf '%s' "$1" \
+    | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' \
+    | awk 'NR>1{printf "\\n"} {printf "%s", $0}'
+}
+
+emit() {
+  # Emit REPORT in the selected mode. In hook mode we produce the SessionStart
+  # hook output object: additionalContext feeds the model (as it always has),
+  # and — only when the update check flagged something stale — a top-level
+  # systemMessage surfaces a nudge to the USER while an appendix is added to
+  # additionalContext telling the model how to run the update. With nothing
+  # stale (the common case) the emitted object is byte-for-byte what it was.
+  _report="$1"
+  if [ "$MODE" != "hook" ]; then
+    printf '%s\n' "$_report"
+    return 0
+  fi
+
+  # additionalContext payload: the report, plus the update playbook appendix
+  # when one exists. Identical to the report when nothing is stale.
+  if [ -n "${NUDGE_CTX:-}" ]; then
+    _ctx="$_report
+
+$NUDGE_CTX"
+  else
+    _ctx="$_report"
+  fi
+
+  if command -v jq >/dev/null 2>&1; then
+    if [ -n "${NUDGE_MSG:-}" ]; then
+      jq -n --arg ctx "$_ctx" --arg msg "$NUDGE_MSG" \
+        '{systemMessage:$msg,hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$ctx}}'
+    else
+      jq -n --arg ctx "$_ctx" \
+        '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$ctx}}'
+    fi
+  else
+    # jq-free fallback: hand-roll the JSON with the same escaping the report
+    # channel has always used, extended to the systemMessage when present.
+    _ctx_esc=$(json_escape "$_ctx")
+    if [ -n "${NUDGE_MSG:-}" ]; then
+      _msg_esc=$(json_escape "$NUDGE_MSG")
+      printf '{"systemMessage":"%s","hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$_msg_esc" "$_ctx_esc"
+    else
+      printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$_ctx_esc"
+    fi
+  fi
+}
+
+# Return 0 if the `astrid --version` string denotes Astrid >= 0.9.0, else 1.
+# Per-principal provisioning (`astrid init --principal`) landed in 0.9.0; on
+# <= 0.8 that command ignores --principal and installs under `default`, so we
+# must NOT offer it there. Parsing is defensive: we pull the first dotted
+# numeric token (major.minor[.patch]) out of whatever `--version` printed and
+# compare major.minor. Anything we cannot parse is treated as OLD (fail toward
+# "tell the user to upgrade" rather than offering a harmful init).
+astrid_version_ge_090() {
+  _sem="$(printf '%s' "${1:-}" | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -n1)"
+  [ -n "$_sem" ] || return 1
+  _maj="${_sem%%.*}"
+  _rest="${_sem#*.}"
+  _min="${_rest%%.*}"
+  case "$_maj" in ''|*[!0-9]*) return 1 ;; esac
+  case "$_min" in ''|*[!0-9]*) return 1 ;; esac
+  [ "$_maj" -gt 0 ] && return 0
+  [ "$_maj" -eq 0 ] && [ "$_min" -ge 9 ] && return 0
+  return 1
+}
+
+# Run "$@" with stdout captured to file $1, killed after $2 seconds. Prefers a
+# real timeout(1) (Linux, macOS+coreutils); falls back to a POSIX
+# background/poll/kill loop where it is absent (stock macOS). REQUIRED because
+# `astrid update --check` builds a 30s HTTP client internally — well over the
+# SessionStart hook budget. Always invoke guarded (`|| true`): a timeout kill
+# returns non-zero and must not trip `set -e`.
+run_bounded() {
+  _rb_out="$1"; _rb_limit="$2"; shift 2
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$_rb_limit" "$@" >"$_rb_out" 2>/dev/null
+    return $?
+  fi
+  "$@" >"$_rb_out" 2>/dev/null &
+  _rb_pid=$!
+  _rb_i=0
+  while [ "$_rb_i" -lt "$_rb_limit" ]; do
+    kill -0 "$_rb_pid" 2>/dev/null || { wait "$_rb_pid" 2>/dev/null; return $?; }
+    sleep 1
+    _rb_i=$((_rb_i + 1))
+  done
+  kill "$_rb_pid" 2>/dev/null || true
+  wait "$_rb_pid" 2>/dev/null || true
+  return 124
+}
+
+# Return 0 iff dotted-numeric version $1 is strictly greater than $2. Compares
+# field by field; missing trailing fields count as 0 (so 0.2.1 > 0.2). Any
+# pre-release/build suffix is dropped to the leading numeric core.
+version_gt() {
+  _vg_a="$(printf '%s' "${1:-}" | grep -oE '[0-9]+(\.[0-9]+)*' | head -n1)"
+  _vg_b="$(printf '%s' "${2:-}" | grep -oE '[0-9]+(\.[0-9]+)*' | head -n1)"
+  [ -n "$_vg_a" ] || return 1
+  [ -n "$_vg_b" ] || return 1
+  while [ -n "$_vg_a" ] || [ -n "$_vg_b" ]; do
+    _vg_af="${_vg_a%%.*}"; _vg_bf="${_vg_b%%.*}"
+    case "$_vg_af" in ''|*[!0-9]*) _vg_af=0 ;; esac
+    case "$_vg_bf" in ''|*[!0-9]*) _vg_bf=0 ;; esac
+    [ "$_vg_af" -gt "$_vg_bf" ] && return 0
+    [ "$_vg_af" -lt "$_vg_bf" ] && return 1
+    case "$_vg_a" in *.*) _vg_a="${_vg_a#*.}" ;; *) _vg_a="" ;; esac
+    case "$_vg_b" in *.*) _vg_b="${_vg_b#*.}" ;; *) _vg_b="" ;; esac
+  done
+  return 1
+}
+
+# Best-effort SessionStart staleness check. Runs at MOST once per 24h (mtime of
+# a stamp file) and NEVER delays or breaks session start: every subprocess and
+# network call is timeout-bounded and every failure path continues silently.
+# Sets the globals consumed by emit() — NUDGE_MSG (user-facing) and NUDGE_CTX
+# (model-facing playbook) — leaving both empty unless something is stale.
+check_updates() {
+  # systemMessage only renders at SessionStart, so only bother in hook mode.
+  [ "$MODE" = "hook" ] || return 0
+
+  _cu_home="${ASTRID_HOME:-$HOME/.astrid}"
+  _cu_stamp="$_cu_home/var/doctor-update-check"
+
+  # Rate limit: if the stamp exists and is younger than 24h, skip silently.
+  if [ -e "$_cu_stamp" ] && [ -n "$(find "$_cu_stamp" -mmin -1440 2>/dev/null || true)" ]; then
+    return 0
+  fi
+  # Touch the stamp NOW — before the checks — so a failing check backs off for
+  # 24h instead of retrying (and re-paying the network cost) every session.
+  mkdir -p "$_cu_home/var" 2>/dev/null || true
+  touch "$_cu_stamp" 2>/dev/null || true
+
+  _cu_tmp="$(mktemp 2>/dev/null || printf '%s' "$_cu_home/var/.doctor-update-check.tmp")"
+
+  # --- Astrid runtime staleness -------------------------------------------
+  # `astrid update --check` prints "Update available: vCUR → vNEW. ..." to
+  # stdout ONLY when a newer self-managed release exists. (A Homebrew install
+  # prints a brew-upgrade note instead, so no astrid nudge fires there — brew
+  # users upgrade via `brew upgrade`.) Parse that line for the two versions.
+  _astrid_new=""; _astrid_cur=""
+  : > "$_cu_tmp" 2>/dev/null || true
+  run_bounded "$_cu_tmp" 5 "$ASTRID" update --check || true
+  if grep -q 'Update available' "$_cu_tmp" 2>/dev/null; then
+    _cu_line="$(grep 'Update available' "$_cu_tmp" 2>/dev/null | head -n1)"
+    _astrid_cur="$(printf '%s' "$_cu_line" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)"
+    _astrid_new="$(printf '%s' "$_cu_line" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | tail -n1)"
+  fi
+
+  # --- Plugin staleness ----------------------------------------------------
+  # Compare our own plugin.json version against the latest sage release tag.
+  # Offline / rate-limited / no-releases-yet all fail silently (curl -f + short
+  # --max-time). The plugin.json sits one level up from this bin/ dir.
+  _plugin_new=""; _plugin_cur=""
+  _cu_pjson="$(dirname "$0")/../.grok-plugin/plugin.json"
+  if [ -f "$_cu_pjson" ] && command -v curl >/dev/null 2>&1; then
+    _plugin_cur="$(grep -oE '"version"[[:space:]]*:[[:space:]]*"[^"]+"' "$_cu_pjson" 2>/dev/null \
+      | head -n1 | sed -E 's/.*"([^"]+)"$/\1/')"
+    _cu_rel="$(curl -fsL --max-time 5 \
+      https://api.github.com/repos/unicity-astrid/sage/releases/latest 2>/dev/null || true)"
+    _cu_tag="$(printf '%s' "$_cu_rel" | grep -oE '"tag_name"[[:space:]]*:[[:space:]]*"[^"]+"' \
+      | head -n1 | sed -E 's/.*"([^"]+)"$/\1/')"
+    if [ -n "$_plugin_cur" ] && [ -n "$_cu_tag" ] && version_gt "$_cu_tag" "$_plugin_cur"; then
+      _plugin_new="$_cu_tag"
+    fi
+  fi
+
+  [ -n "${_cu_tmp:-}" ] && rm -f "$_cu_tmp" 2>/dev/null || true
+
+  # --- Compose the user-facing nudge --------------------------------------
+  if [ -n "$_astrid_new" ] && [ -n "$_plugin_new" ]; then
+    NUDGE_MSG="🔔 Updates available: Astrid v$_astrid_new (you have v$_astrid_cur) and the Astrid plugin $_plugin_new (you have $_plugin_cur) — just ask me to update and I'll handle the rest."
+  elif [ -n "$_astrid_new" ]; then
+    NUDGE_MSG="🔔 Astrid v$_astrid_new is available (you have v$_astrid_cur) — just ask me to update Astrid and I'll handle the rest."
+  elif [ -n "$_plugin_new" ]; then
+    NUDGE_MSG="🔔 The Astrid plugin $_plugin_new is available (you have $_plugin_cur) — just ask me to update it and I'll take care of it."
+  fi
+
+  # --- Model-facing playbook (only the steps that apply) ------------------
+  if [ -n "$NUDGE_MSG" ]; then
+    _cu_ctx="UPDATE AVAILABLE — when the user asks you to update, run only the applicable steps below, in order, and report the result. Do not run them without the user's go-ahead."
+    if [ -n "$_astrid_new" ]; then
+      _cu_ctx="$_cu_ctx
+  - Update the Astrid runtime:  astrid update -y
+    (On a Homebrew install that command defers to Homebrew — tell the user to run: brew upgrade astrid.)
+  - Then re-provision this principal's capsules against the new runtime:
+    astrid init --distro mimir -y && astrid init --distro mimir --principal $PRINCIPAL -y"
+    fi
+    if [ -n "$_plugin_new" ]; then
+      _cu_ctx="$_cu_ctx
+  - Update this plugin:  grok plugin update mimir
+    (The user must restart Grok Build for the new plugin version to load.)"
+    fi
+    NUDGE_CTX="$_cu_ctx"
+  fi
+}
+
+# astrid not installed — actionable, non-fatal. Surface the plugin's installer
+# so the agent can offer to run it in-conversation. This IS the consent surface:
+# bin/astrid-up can't install at MCP-server boot (no TTY, stdout is JSON-RPC), so
+# the human sees the install proposed and run here, deliberately.
+if [ ! -x "$ASTRID" ]; then
+  INSTALLER="$(dirname "$0")/astrid-install"
+  emit "Astrid is not installed (no executable astrid + astrid-daemon pair found via ASTRID_BIN/ASTRID_BIN_ROOT, nearby core/target/{debug,release}, ~/.astrid/bin, Homebrew, or PATH), so this session has no Astrid tools yet.
+Fix (release): run the plugin's bootstrapper, which installs the Astrid runtime via Homebrew or a prebuilt release binary, then start a new session:
+    $INSTALLER
+(Manual alternative: brew install unicity-astrid/tap/astrid)
+Fix (dev worktree): build core, then pin the pair with ASTRID_BIN_ROOT=<repo>/core/target/debug (or put that key in this plugin's .mcp.json env block). Launching Grok from a checkout that already has core/target/debug also auto-selects it.
+The user can run that, or you may offer to run the installer for them."
+  exit 0
+fi
+
+# Principal this session ACTS AS. Grok does not expand Claude-style
+# userConfig into plugin env today, so resolution order is:
+#   1. GROK_PLUGIN_OPTION_PRINCIPAL (if a future host sets it)
+#   2. ~/.astrid/run/session.principal (published by bin/astrid-up for this MCP session)
+#   3. least-authority family default `grok-code` — NEVER the admin `default`
+# Operator CLI context stays decoupled (typically `default`/admin).
+PRINCIPAL="${GROK_PLUGIN_OPTION_PRINCIPAL:-${GROK_PLUGIN_OPTION_principal:-}}"
+if [ -z "$PRINCIPAL" ]; then
+  _sp="${ASTRID_HOME:-$HOME/.astrid}/run/session.principal"
+  if [ -f "$_sp" ]; then
+    PRINCIPAL="$(tr -d "[:space:]" < "$_sp" 2>/dev/null || true)"
+  fi
+fi
+[ -n "$PRINCIPAL" ] || PRINCIPAL="grok-code"
+
+# Best-effort, rate-limited update nudge. Placed AFTER the not-installed guard
+# (a missing binary is covered by the installer guidance above, and must not
+# nudge) and after PRINCIPAL is known (the re-provision playbook names it). Sets
+# NUDGE_MSG / NUDGE_CTX, which every emit() below folds in; a no-op when nothing
+# is stale or the stamp is fresh.
+check_updates
+
+# --- Per-principal provisioning check (filesystem, NOT `astrid status`) --------
+# Capsules install PER PRINCIPAL under
+#   $ASTRID_HOME/home/<principal>/.local/capsules/<capsule-name>/
+# (the CLI's resolve_target_dir_for: home.principal_home(p).capsules_dir()/<id>,
+# where <id> is the capsule's bare Capsule.toml package name). The mimir-mcp
+# broker is the tool backplane: absent for THIS principal ⇒ 'tools/list' is
+# empty and the session has no Astrid tools. We check the filesystem directly
+# rather than parsing `astrid status`, whose capsule list reflects the
+# operator's default CLI context — the WRONG principal's view for a scoped
+# session such as 'grok-code'. This check is daemon-independent, so it fires
+# even during the cold-start race before the daemon is reachable — exactly when
+# a fresh plugin user most needs to be told their tools aren't provisioned yet.
+ASTRID_HOME_DIR="${ASTRID_HOME:-$HOME/.astrid}"
+BROKER_DIR="$ASTRID_HOME_DIR/home/$PRINCIPAL/.local/capsules/mimir-mcp"
+
+if [ ! -d "$BROKER_DIR" ]; then
+  # Not provisioned for this principal. Provisioning is
+  #   astrid init --distro mimir --principal <p>
+  # which landed in astrid 0.9.0. On <= 0.8 that command IGNORES --principal and
+  # installs under `default` (the wrong identity), so the offer is version-gated:
+  # >= 0.9.0 offers init; older tells the user to upgrade first. This is the
+  # consent surface — the doctor OFFERS, the human decides. bin/astrid-up never
+  # runs init (no TTY, and its stdout is the JSON-RPC transport).
+  VER_RAW="$("$ASTRID" --version 2>/dev/null || true)"
+  VER="$(printf '%s' "$VER_RAW" | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -n1)"
+  # FRESH-MACHINE GUIDANCE, two deliberate steps beyond the bare per-principal
+  # init:
+  #
+  # 1. Provision `default` FIRST, then the session principal. The daemon
+  #    discovers its CLI uplink proxy (the capsule that owns the Unix-socket
+  #    listener) only from `default`'s registry, so a home where ONLY a
+  #    non-default principal has capsules cannot even boot the daemon — the
+  #    socket never comes up and every session dies at connect
+  #    (unicity-astrid/astrid#1116). Initing default first makes the second,
+  #    per-principal init land on a bootable runtime.
+  #
+  # 2. Pre-grant the distro's capsules to the session principal. Until core
+  #    delivers per-call-scoped grant prompts (unicity-astrid/astrid#1113) and
+  #    the shim can relay more than one grant per call
+  #    (unicity-astrid/astrid#1117), first-run tool calls converge fastest when
+  #    the operator grants the distro's capsule set up front — the user already
+  #    consented to exactly this set by running init. Without it, the first
+  #    calls stall on one consent round-trip per capsule.
+  #
+  # SYNC: the --add-capsule list mirrors the [capsules] set in Distro.toml.
+  PREGRANT="astrid agent modify $PRINCIPAL --add-capsule mimir-mcp --add-capsule astrid-capsule-cli --add-capsule astrid-capsule-forge --add-capsule astrid-capsule-fs --add-capsule astrid-capsule-http --add-capsule astrid-capsule-shell --add-capsule astrid-capsule-skills --add-capsule astrid-capsule-system"
+  if astrid_version_ge_090 "$VER_RAW"; then
+    emit "Astrid agent — principal '$PRINCIPAL'.
+
+Astrid tools are NOT provisioned for this principal. The mimir-mcp broker (the
+MCP tool backplane) is not installed under '$PRINCIPAL', so 'tools/list' comes
+back empty and this session has no Astrid tools yet.
+
+Fix, step 1 — provision 'default' first, then this session's principal:
+
+    astrid init --distro mimir -y && astrid init --distro mimir --principal $PRINCIPAL -y
+
+(Both installs matter on a fresh machine: the daemon finds its CLI uplink —
+the capsule that serves the socket every session connects through — only in
+'default's registry, so a home provisioned solely for '$PRINCIPAL' cannot
+boot. The second install scopes the governed tool set to '$PRINCIPAL'.)
+
+Step 2 — smooth the first run by granting the distro's capsules to
+'$PRINCIPAL' up front (init just recorded consent for exactly this set;
+without the grants, the first tool calls stall on one consent prompt per
+capsule):
+
+    $PREGRANT
+
+Offer to run these for the user and run them once they agree — do NOT run
+them silently; installing tools and granting access are the human's decision."
+    exit 0
+  else
+    emit "Astrid agent — principal '$PRINCIPAL'.
+
+Astrid tools are NOT provisioned for this principal, and per-principal
+provisioning requires Astrid >= 0.9.0 (this Astrid reports ${VER:-an older, unrecognised version}).
+On <= 0.8, 'astrid init --principal' ignores the principal and installs under
+'default' — the wrong identity — so provisioning now would be actively harmful.
+
+Fix: upgrade Astrid first —
+
+    brew upgrade astrid        (or: astrid update)
+
+then provision 'default' (the daemon boots its socket only from 'default's
+registry) followed by this session's principal:
+
+    astrid init --distro mimir -y && astrid init --distro mimir --principal $PRINCIPAL -y
+
+then smooth the first run by granting the distro's capsules to '$PRINCIPAL'
+up front (otherwise the first tool calls stall on one consent prompt per
+capsule):
+
+    $PREGRANT
+
+Offer these steps to the user; do not run them silently."
+    exit 0
+  fi
+fi
+
+# Probe the daemon (read-only). `astrid status` exits 0 either way, so we
+# read its text. Give the wrapper's boot a brief moment (~2s) in case the
+# hook fires before the daemon finishes coming up.
+STATUS=""
+i=0
+while [ "$i" -lt 40 ]; do
+  STATUS="$("$ASTRID" status 2>/dev/null || true)"
+  if printf '%s' "$STATUS" | grep -q '(PID'; then
+    break
+  fi
+  sleep 0.05 2>/dev/null || sleep 1
+  i=$((i + 1))
+done
+
+if ! printf '%s' "$STATUS" | grep -q '(PID'; then
+  emit "Astrid agent — principal '$PRINCIPAL'.
+
+The Astrid daemon is not reachable yet. If tools don't appear shortly, start it with: astrid start
+(The plugin normally boots an ephemeral daemon automatically when the MCP server launches.)"
+  exit 0
+fi
+
+# Parse the status report.
+PIDLINE="$(printf '%s' "$STATUS" | grep '(PID' | head -n1 | sed 's/^[[:space:]]*//')"
+CAPCOUNT="$(printf '%s' "$STATUS" | grep -i 'Capsules:' | head -n1 | sed 's/^[[:space:]]*//')"
+
+# Broker verdict comes from the per-principal filesystem check above, which is
+# authoritative for THIS principal; reaching here means it is provisioned. We
+# deliberately do NOT read the broker's load state from `astrid status`, whose
+# capsule list is the operator's default-context view, not this principal's.
+BROKER_NOTE="MCP broker:  mimir-mcp provisioned for '$PRINCIPAL' — Astrid tools are served."
+
+INGRESS_NOTE="First-call note: tool *calls* are confused-deputy gated by mimir-mcp's
+             trusted_ingress_ids allow-set (tools/list is ungated). If calls come
+             back denied, add this session's CLI uplink source_id to mimir-mcp's
+             trusted_ingress_ids (one-time, single-tenant = your own machine)."
+
+REPORT="Astrid — you are running as a governed Astrid agent.
+
+  Principal:   $PRINCIPAL
+               (tool execution + capability checks are scoped to this identity)
+  Daemon:      $PIDLINE
+  $CAPCOUNT
+  $BROKER_NOTE
+
+Acting through Astrid: call the astrid__* tools to act via Astrid's capsule
+surface (filesystem, http, shell, system, skills). Every such call passes the
+broker policy gate and the principal's capability checks. Your native
+run_terminal_command/read_file/search_replace run in Grok's own sandbox; astrid__* additionally
+goes through the Astrid runtime.
+
+$INGRESS_NOTE"
+
+emit "$REPORT"
+exit 0

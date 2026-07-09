@@ -1,0 +1,139 @@
+[package]
+name = "sage"
+version = "0.1.0"
+description = "Claude headless (claude -p) agent runner"
+authors = [
+    "Joshua J. Bouw <dev@joshuajbouw.com>",
+    "Unicity Labs <info@unicity-labs.com>",
+]
+astrid-version = ">=0.7.0"
+
+[[component]]
+id = "sage"
+file = "sage.wasm"
+type = "executable"
+
+[capabilities]
+host_process = ["claude"]
+# Persistent-tier sub-grant (astrid#873): `spawn-persistent` requires this
+# in ADDITION to `host_process`. Sage spawns `claude -p` on the persistent
+# tier so the child outlives a sage capsule reload — the supervisor re-
+# `attach`es by ProcessId and keeps driving the same conversation instead of
+# abandoning it. Without this grant the host denies `spawn-persistent` with
+# `capability-denied` and no session could be spawned.
+allow_persistent = true
+kv = []
+# The `home://` scheme resolves dynamically at check time against the
+# per-invocation principal's home root (`~/.astrid/home/<principal>/` in
+# the FHS layout; see core/crates/astrid-kernel/src/lib.rs:75). Sage
+# writes the identity prompt file under `home://.claude/`; restricting
+# the write scope keeps it the only mutable subdirectory.
+fs_read = ["home://"]
+fs_write = ["home://.claude/"]
+
+# Per-principal sage configuration. Three orthogonal knobs are
+# elicited at install time and stored by the kernel (typed values land
+# in the per-principal env JSON; secrets land in SecretStore). All
+# three are read back with `astrid_sdk::env::var(...)` — the
+# `#[astrid::install]` hook on the sage crate validates and persists
+# them into a structured `PrincipalConfig` under
+# `kv://sage.principal.config`.
+#
+# * `interaction_mode` — "headless" (Astrid spawns `claude -p` and
+#   restricts tools to `mcp__sage__*`) or "repl" (the operator drives
+#   `claude` directly inside the principal folder; sage refuses to
+#   spawn and only audits via the placeholder hook bridge).
+# * `auth_mode` — "api_key" (read the `api_key` secret and forward as
+#   `ANTHROPIC_API_KEY`) or "subscription" (delegate to `claude /login`
+#   inside the principal folder; sage never sets the env var and omits
+#   the `apiKeyHelper` pin).
+# * `api_key` — kernel walks every `[env]` key unconditionally (no
+#   `when=` semantics today), so the secret is always offered. Empty
+#   values are not persisted, so subscription-mode operators leave it
+#   blank.
+[env]
+interaction_mode = { type = "select", enum_values = ["headless", "repl"], default = "headless", request = "Interaction mode: 'headless' (Astrid drives claude -p) or 'repl' (you run claude directly)" }
+auth_mode = { type = "select", enum_values = ["api_key", "subscription"], default = "api_key", request = "Auth mode: 'api_key' or 'subscription' (see README: macOS Keychain is HOME-blind)" }
+api_key = { type = "secret", request = "Anthropic API key (leave blank for subscription mode)", placeholder = "sk-ant-..." }
+
+# Topics are pre-RFC placeholders; the agent-provider contract
+# (rfc:agent-provider.v1) will lock these once drafted.
+#
+# `*` in kernel topic patterns matches exactly one segment (see
+# astrid-capsule::topic::topic_matches). Multi-depth wildcards therefore
+# require multiple patterns. Anything subscribed to dynamically inside
+# `#[astrid::run]` is still kernel-gated, so it must appear in
+# `[subscribe]` here too (no handler key means runtime-only subscribe).
+[subscribe]
+# Per-principal spawn request: provision a long-lived `claude -p`
+# subprocess and return a session handle.
+"sage.v1.request.spawn" = { wit = "opaque", handler = "handle_spawn" }
+# Update the per-principal settings (interaction_mode / auth_mode).
+# Sage owns `kv://sage.principal.config` (canonical source of truth) and
+# re-emits `sage.v1.install.relink` so sage-install rewrites the on-disk
+# `.claude/settings.local.json` + `.mcp.json` with the new shape.
+"sage.v1.request.settings.set" = { wit = "opaque", handler = "handle_settings_set" }
+# Send a user message into an existing session's stream-json stdin.
+"sage.v1.request.send.*" = { wit = "opaque", handler = "handle_send" }
+# Dynamic subscribes opened inside `#[astrid::run]`. Listed here so
+# the kernel admits them; no handler key — the run loop polls them.
+# NB: tool-call and approval routing are deliberately absent — claude
+# drives `mcp__sage__*` tools directly against the registered
+# `astrid mcp serve` MCP server (which owns its own approval/timeout
+# handling), so sage never sees tool calls, results, or approvals.
+"sage.v1.request.stop.*" = "opaque"
+"sage.v1.install.complete" = "opaque"
+"tool.v1.execute.save_identity.result" = "opaque"
+# Hook validator drain: `astrid-emit` (astrid#814) publishes
+# per-Claude-hook envelopes here with a per-session token. Sage's
+# run loop verifies the token, then republishes on `hook.v1.event.*`
+# (canonical) or `sage.v1.notification`. Token mismatches drop and
+# audit on `sage.v1.audit.hook_spoof_attempt`.
+"sage.v1.hook.*" = "opaque"
+# Spark identity-prompt response (dynamic subscribe in identity::fetch_prompt).
+"spark.v1.response.ready" = "opaque"
+
+[publish]
+# Streamed events from a `claude -p` subprocess. Both 4-segment
+# (e.g. `sage.v1.event.session_rejected`) and 5-segment session-scoped
+# topics (e.g. `sage.v1.event.<sid>.spawned|exited|resumed|error|respawned|
+# text|result|partial|done|init`) are published.
+"sage.v1.event.*" = "opaque"
+"sage.v1.event.*.*" = "opaque"
+# Audit events: `sage.v1.audit.spawn`,
+# `sage.v1.audit.identity_fallback`, `sage.v1.audit.respawn_abandoned`.
+# hook validator: republish + audit
+#   `sage.v1.audit.hook_spoof_attempt` — token mismatch on an
+#     `sage.v1.hook.*` event; the offending claim is
+#     captured for observability and the event is dropped.
+#   `sage.v1.audit.hook_token.minted` / `sage.v1.audit.hook_token.forgotten`
+#     — lifecycle audits emitted by `crate::hooks::{mint_token,forget_token}`.
+"sage.v1.audit.*" = "opaque"
+# Canonical hook-event republish — after sage validates the per-session
+# token on an `sage.v1.hook.<name>` event, it strips the
+# transport fields (principal_id, session_id, token) and re-emits on
+# the canonical Astrid hook topic. Subscribers trust sage's attribution
+# ("sage as a CA") because the kernel attributes the republish from
+# sage's run-loop context; the principal_id rides inside the payload.
+"hook.v1.event.*" = "opaque"
+# Notification republish — Claude's `Notification` hook has no
+# canonical Astrid equivalent yet, so sage republishes validated
+# notifications on a sage-namespaced topic. Forward-compatible: once a
+# canonical `notification.v1.*` topic lands, the validator switches.
+"sage.v1.notification" = "opaque"
+# Install-trigger published by `ensure_install` when no completion
+# marker is in KV. sage-install consumes it and replies on
+# `sage.v1.install.complete`.
+"sage.v1.install.run" = "opaque"
+# Re-link an existing principal after the operator changes
+# interaction_mode / auth_mode via `sage.v1.request.settings.set`.
+# sage-install subscribes to this topic and rewrites
+# `.claude/settings.local.json` + `.mcp.json` with the new shape.
+"sage.v1.install.relink" = "opaque"
+# Settings-changed broadcast emitted after sage-install confirms the
+# on-disk rewrite. Carries the new `PrincipalConfig` so subscribers
+# (dashboards, audit sinks) can mirror the operator's choice without
+# re-reading sage's KV.
+"sage.v1.settings.changed" = "opaque"
+# Per-session identity-prompt build request to spark.
+"spark.v1.request.build" = "opaque"

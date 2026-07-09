@@ -1,0 +1,21 @@
+[package]
+name = "agent-broker"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Shared MCP tool broker for Astrid-governed agent products"
+publish = false
+
+[dependencies]
+agent-core.workspace = true
+astrid-sdk.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+
+[lib]
+path = "src/lib.rs"
+# Host tests run as native; capsule thin crates re-export as cdylib.

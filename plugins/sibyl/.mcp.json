@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "astrid": {
+      "command": "./bin/astrid-up",
+      "args": ["--principal", "sibyl-code"],
+      "cwd": "/Users/joshuaj.bouw/dev/astrid.worktrees/agent6/capsules/sibyl/astrid-plugin",
+      "env": {
+        "ASTRID_BIN_ROOT": "/Users/joshuaj.bouw/dev/astrid.worktrees/agent6/core/target/debug"
+      }
+    }
+  }
+}

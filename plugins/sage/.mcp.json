@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "astrid": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/bin/astrid-up",
+      "args": ["--principal", "${user_config.principal}"],
+      "env": {}
+    }
+  }
+}

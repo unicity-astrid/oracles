@@ -1,0 +1,47 @@
+[package]
+name = "sage-install"
+version = "0.1.0"
+description = "Per-principal Claude provisioner (HOME-isolated .claude/ and OAuth)"
+authors = [
+    "Joshua J. Bouw <dev@joshuajbouw.com>",
+    "Unicity Labs <info@unicity-labs.com>",
+]
+astrid-version = ">=0.7.0"
+
+[[component]]
+id = "sage-install"
+file = "sage_install.wasm"
+type = "executable"
+
+[capabilities]
+# The `home://` scheme resolves at check time against the per-invocation
+# principal home (`~/.astrid/home/<principal>/` in the FHS layout — see
+# core/crates/astrid-kernel/src/lib.rs:75). sage-install writes
+# `.claude/settings.local.json` + `.claude/.mcp.json` so the write scope
+# is intentionally narrowed to `home://.claude/`; the read side stays
+# permissive within the principal home for diagnostics.
+fs_read = ["home://"]
+fs_write = ["home://.claude/"]
+kv = []
+
+[subscribe]
+# Run the per-principal install: create home://.claude/, write
+# settings.local.json (hardened permissions + the MCP stub pointing at
+# /bin/false — sage parses tool_use blocks out of stream-json directly).
+# Onboarding credentials (the Anthropic API key) are NOT elicited from
+# here; the sibling `sage` crate's Capsule.toml `[env]` block declares
+# them so the kernel elicits at install time and persists via the host
+# SecretStore. See the crate-level doc in src/lib.rs.
+"sage.v1.install.run" = { wit = "opaque", handler = "handle_install" }
+# Re-link an existing principal (re-run /login or refresh config).
+"sage.v1.install.relink" = { wit = "opaque", handler = "handle_relink" }
+
+[publish]
+"sage.v1.install.status" = "opaque"
+"sage.v1.install.complete" = "opaque"
+# Audit events emitted by sage-install (e.g. `relink_completed`,
+# `install_completed`). Declared as a wildcard so future audit
+# variants can be added without re-touching the manifest. Mirrors the
+# `sage.v1.audit.*` declaration on the sage crate; cross-capsule audit
+# convention is not yet established (see TODO at each emit site).
+"sage.v1.audit.*" = "opaque"

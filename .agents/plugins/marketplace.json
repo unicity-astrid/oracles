@@ -1,0 +1,16 @@
+{
+  "name": "astrid-agents",
+  "owner": {
+    "name": "Unicity Labs"
+  },
+  "metadata": {
+    "description": "Astrid-governed agent plugins (Sage / Mimir / Sibyl)"
+  },
+  "plugins": [
+    {
+      "name": "astrid",
+      "source": "./plugins/sibyl",
+      "description": "Sibyl — Codex, governed by Astrid"
+    }
+  ]
+}

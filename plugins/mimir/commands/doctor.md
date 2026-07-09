@@ -1,0 +1,9 @@
+---
+description: Diagnose the Astrid runtime backing this session and report readiness + any fix.
+---
+
+Run the Astrid readiness check and present the result.
+
+!`"${GROK_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/bin/astrid-doctor" --format human 2>/dev/null || echo "(could not run astrid-doctor — is the Mimir plugin installed correctly?)"`
+
+Relay the report. If it flags a gap (no daemon, missing `mimir-mcp` broker, or denied tool calls needing a trusted ingress), state the gap and the exact fix it gives. Otherwise confirm the session is a healthy, governed Astrid agent.
