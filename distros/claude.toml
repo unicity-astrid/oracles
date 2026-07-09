@@ -19,7 +19,7 @@ version = "0.2.0"
 role = "uplink"
 
 [[capsule]]
-name = "sage"
+name = "claude-runner"
 source = "@unicity-astrid/oracles"
 version = "0.1.0"
 [capsule.env]
@@ -32,7 +32,7 @@ source = "@unicity-astrid/oracles"
 version = "0.1.0"
 
 [[capsule]]
-name = "sage-install"
+name = "claude-install"
 source = "@unicity-astrid/oracles"
 version = "0.1.0"
 

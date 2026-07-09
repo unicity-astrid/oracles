@@ -152,6 +152,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "claude-completion"
+version = "0.1.0"
+dependencies = [
+ "astrid-sdk",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "claude-install"
+version = "0.1.0"
+dependencies = [
+ "astrid-sdk",
+ "oracle-core",
+ "oracle-host",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "claude-runner"
+version = "0.1.0"
+dependencies = [
+ "astrid-sdk",
+ "oracle-core",
+ "oracle-host",
+ "serde",
+ "serde_json",
+ "sha2",
+ "uuid",
+]
+
+[[package]]
 name = "codex-install"
 version = "0.1.0"
 dependencies = [
@@ -442,41 +477,6 @@ name = "rustversion"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
-
-[[package]]
-name = "sage"
-version = "0.1.0"
-dependencies = [
- "astrid-sdk",
- "oracle-core",
- "oracle-host",
- "serde",
- "serde_json",
- "sha2",
- "uuid",
-]
-
-[[package]]
-name = "sage-completion"
-version = "0.1.0"
-dependencies = [
- "astrid-sdk",
- "serde",
- "serde_json",
- "uuid",
-]
-
-[[package]]
-name = "sage-install"
-version = "0.1.0"
-dependencies = [
- "astrid-sdk",
- "oracle-core",
- "oracle-host",
- "serde",
- "serde_json",
- "uuid",
-]
 
 [[package]]
 name = "schemars"

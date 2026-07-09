@@ -1,0 +1,22 @@
+[package]
+name = "claude-runner"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Claude headless (claude -p) agent runner on Astrid OS"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+oracle-host.workspace = true
+oracle-core.workspace = true
+astrid-sdk.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+uuid.workspace = true

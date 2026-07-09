@@ -1,30 +1,49 @@
 # Astrid Oracles
 
-External coding runtimes bound into **Astrid**. One backend, host adapters
-only where the host product forces difference.
+External coding runtimes bound into **Astrid**. One backend; host adapters
+only where the host protocol forces it.
 
-## Shared vs host-specific
-
-| Crate | Role |
-|-------|------|
-| `oracle-core` | `Host`, `HostProfile`, singleton `OracleIdentity` (wire: `mcp__astrid__*`) |
-| `oracle-broker` | Shared MCP broker (discovery, policy, approval, execute) |
-| `oracle-host` | Shared host primitives: `PrincipalId`, atomic fs, `HostProvisioner` install loop, topics |
-| `astrid-mcp` | The only broker capsule |
-| `codex-install` | Thin `HostProvisioner` for `.codex/` |
-| `sage-install` | Claude provisioner — uses shared ids/fs; richer config-aware loop still host-local |
-| `sage` | Claude `claude -p` supervisor (protocol-specific) |
-| `codex-runner` | Codex bounded-exec runner (protocol-specific) |
-| `sage-completion` | Optional Anthropic API completion provider |
-
-Claude stream-json and Codex `exec` are **different host protocols** — those
-runners cannot be one codec. What they **must** share is already shared:
-identity, install loop, ids, atomic writes, MCP broker.
+## Architecture
 
 ```
-plugins/{claude,grok,codex}  →  astrid-mcp (OracleIdentity::ASTRID)
-                             →  host provisioner (HostProvisioner)
-                             →  host runner (if supervised)
+                    ┌─────────────────────────────────────┐
+  Claude / Grok /   │  plugins/{claude,grok,codex}        │
+  Codex plugins     │    thin wrappers → plugins/common   │
+                    └──────────────┬──────────────────────┘
+                                   │ MCP (mcp__astrid__*)
+                                   ▼
+                    ┌─────────────────────────────────────┐
+                    │  astrid-mcp  (oracle-broker)          │
+                    │  OracleIdentity::ASTRID — one wire id │
+                    └─────────────────────────────────────┘
+                                   │
+              ┌────────────────────┼────────────────────┐
+              ▼                    ▼                    ▼
+     claude-install         (grok: broker only)   codex-install
+     HostProvisioner                              HostProvisioner
+              │                                         │
+              ▼                                         ▼
+        claude-runner                              codex-runner
+        (claude -p)                                (codex exec)
+```
+
+| Crate | Shared? | Role |
+|-------|---------|------|
+| `oracle-core` | yes | `Host`, `OracleIdentity` |
+| `oracle-broker` | yes | MCP broker implementation |
+| `oracle-host` | yes | `PrincipalId`, atomic fs, `HostProvisioner`, topics |
+| `astrid-mcp` | yes | sole broker capsule |
+| `claude-install` / `codex-install` | thin | host home layouts on shared install loop |
+| `claude-runner` / `codex-runner` | host protocol | process supervision / exec |
+
+## Plugins
+
+```
+plugins/
+  common/bin/     # astrid-up, doctor, install, resolve (shared)
+  claude/bin/     # thin wrappers + Claude-only statusline
+  grok/bin/       # thin wrappers
+  codex/bin/      # Codex-specific up (hooks surface differs)
 ```
 
 ## Distros
@@ -39,7 +58,8 @@ astrid init --distro ./distros/codex.toml  --principal codex-code
 
 ```bash
 cargo test -p oracle-core -p oracle-broker -p oracle-host --lib
-cargo build -p astrid-mcp -p codex-install -p codex-runner -p sage -p sage-install
+cargo build -p astrid-mcp -p claude-install -p claude-runner \
+            -p codex-install -p codex-runner
 ```
 
 ## License
