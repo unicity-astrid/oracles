@@ -1,14 +1,19 @@
 #!/usr/bin/env sh
-# install.sh — one-command Astrid oracles installer
+# install.sh — one-command Astrid installer (base OS + optional oracles)
 #
 # Website / GitHub Pages / raw:
 #   curl -fsSL https://raw.githubusercontent.com/unicity-astrid/oracles/main/install.sh | sh
 #
+# Product model:
+#   * Base Astrid is a complete install (daemon, CLI, default principal).
+#   * Oracles (Claude / Grok / Codex) are optional host adapters on top.
+#
 # Behaviour (least surprise):
-#   1. Ensure the Astrid CLI is available
-#   2. Detect Claude Code / Grok / Codex already on this machine
-#   3. Wire only those hosts (shared astrid-mcp backend + host distro)
-#   4. If none detected → install Astrid only and print next steps
+#   1. Ensure the Astrid CLI is available (Homebrew / PATH / dev tree)
+#   2. Ensure base runtime is initialized (astrid init -y when needed)
+#   3. Detect Claude Code / Grok / Codex on this machine
+#   4. Wire only those hosts (shared astrid-mcp + host distro) — never force all
+#   5. If none detected → stop at base Astrid (success, not a half-install)
 #
 # Flags:
 #   --host claude|grok|codex   wire only this host (repeatable)
@@ -87,6 +92,7 @@ YES=0
 NO_BREW=0
 SKIP_INIT=0
 ALL_HOSTS=0
+BASE_ONLY=0
 BIN_ROOT="${ASTRID_BIN_ROOT:-}"
 # space-separated list of hosts requested via --host
 REQUESTED_HOSTS=""
@@ -107,6 +113,7 @@ while [ "$#" -gt 0 ]; do
       esac
       ;;
     --all) ALL_HOSTS=1 ;;
+    --base-only) BASE_ONLY=1 ;;
     --yes|-y) YES=1 ;;
     --no-brew) NO_BREW=1 ;;
     --bin-root)
@@ -210,8 +217,36 @@ astrid_version() {
   "$ASTRID" --version 2>/dev/null | head -n1 || printf 'unknown'
 }
 
+
 # ---------------------------------------------------------------------------
-# Distro + principal
+# Base Astrid (complete product without any oracle host)
+# ---------------------------------------------------------------------------
+base_already_initialized() {
+  # Heuristic: default principal home or local capsules dir exists.
+  home="${ASTRID_HOME:-$HOME/.astrid}"
+  [ -d "$home/home/default" ] || [ -d "$home/home" ] || [ -f "$home/config.toml" ]
+}
+
+ensure_base_astrid() {
+  header "Base Astrid"
+  if [ "$SKIP_INIT" -eq 1 ]; then
+    warn "skipping base init (--skip-init)"
+    return 0
+  fi
+  if base_already_initialized; then
+    ok "runtime home present (${ASTRID_HOME:-$HOME/.astrid})"
+    return 0
+  fi
+  info "initializing default principal (base install)…"
+  if "$ASTRID" init -y 2>&1; then
+    ok "base Astrid initialized"
+  else
+    warn "astrid init -y reported an error — run: astrid doctor"
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Oracle hosts (optional)
 # ---------------------------------------------------------------------------
 # Prefer local checkout distros when this script lives in a clone.
 script_dir() {
@@ -324,12 +359,13 @@ plugin_hint() {
 # ---------------------------------------------------------------------------
 main() {
   say ""
-  say "${C_BOLD}Astrid Oracles${C_RESET}"
-  say "${C_DIM}one backend · host adapters for Claude · Grok · Codex${C_RESET}"
+  say "${C_BOLD}Astrid${C_RESET}"
+  say "${C_DIM}secure OS for AI agents · optional oracles for Claude · Grok · Codex${C_RESET}"
   say ""
 
   resolve_astrid
   info "version: $(astrid_version)"
+  ensure_base_astrid
 
   # Build host list
   hosts=""
@@ -346,10 +382,15 @@ main() {
     detect_codex  && detected="${detected} codex"
     hosts="$detected"
     if [ -n "$hosts" ]; then
-      info "detected:$(printf '%s' "$hosts" | sed 's/ /, /g')"
+      info "detected oracles:$(printf '%s' "$hosts" | sed 's/ /, /g')"
     else
-      info "no coding host detected on this machine"
+      info "no coding-host oracle detected (base Astrid is enough to start)"
     fi
+  fi
+
+  if [ "$BASE_ONLY" -eq 1 ]; then
+    hosts=""
+    info "mode: --base-only (skip oracle hosts)"
   fi
 
   # Interactive confirm when multiple detected and TTY
@@ -370,15 +411,16 @@ main() {
   fi
 
   if [ -z "$hosts" ]; then
-    header "Astrid installed"
-    ok "CLI ready — no Claude / Grok / Codex found yet"
+    header "Base Astrid ready"
+    ok "You have a full Astrid install — no coding-host oracle required"
     say ""
-    say "Next:"
-    say "  1. Install Claude Code, Grok Build, or Codex"
-    say "  2. Re-run this installer  ${C_DIM}(or: sh install.sh --host claude)${C_RESET}"
+    say "Try:"
+    say "  ${C_BOLD}astrid doctor${C_RESET}     health check"
+    say "  ${C_BOLD}astrid chat${C_RESET}       session (if your distro includes a model)"
     say ""
-    say "Or provision a host explicitly:"
+    say "Optional — wire a coding host when you use one:"
     say "  curl -fsSL https://raw.githubusercontent.com/${ORACLES_REPO}/${ORACLES_REF}/install.sh | sh -s -- --host claude"
+    say "  ${C_DIM}(or re-run this installer after installing Claude / Grok / Codex)${C_RESET}"
     say ""
     exit 0
   fi
@@ -388,7 +430,9 @@ main() {
   done
 
   header "Done"
-  say "Backend: ${C_BOLD}astrid-mcp${C_RESET} (shared). Hosts wired:"
+  ok "Base Astrid + oracle host(s)"
+  say "Shared tool backend: ${C_BOLD}astrid-mcp${C_RESET}"
+  say "Oracles wired:"
   for h in $hosts; do
     say "  • $(pretty_host "$h")  →  $(principal_for "$h")"
     plugin_hint "$h"

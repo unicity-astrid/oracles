@@ -13,28 +13,27 @@ settings. One shared backend; thin per-host adapters.
 
 ## Install (one command)
 
-Detects Claude Code / Grok / Codex on your machine and wires only those hosts
-into Astrid (shared `astrid-mcp` backend). Does **not** force every host.
+**Base Astrid is a complete product.** Oracles (Claude / Grok / Codex) are
+optional adapters — only wired when that host is on the machine (or you ask).
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/unicity-astrid/oracles/main/install.sh | sh
 ```
 
-Useful variants:
+| Flag | Meaning |
+|------|---------|
+| *(default)* | Install/ensure Astrid; wire **detected** coding hosts only |
+| `--base-only` | Stop at base Astrid (no oracle plugins/distros) |
+| `--host claude` | Also wire that host (repeatable) |
+| `--all` | Wire every oracle host (demos / power users) |
 
 ```bash
-# Explicit single host
+curl -fsSL …/install.sh | sh -s -- --base-only
 curl -fsSL …/install.sh | sh -s -- --host claude
-
-# Every host (demos / power users)
-curl -fsSL …/install.sh | sh -s -- --all
-
-# Local clone
 ./install.sh --yes
 ```
 
-GitHub Pages can serve the same file if you publish this repo; the raw URL above
-is the canonical endpoint until then.
+Canonical endpoint: raw GitHub (same file if served from GitHub Pages).
 
 ## Architecture
 
