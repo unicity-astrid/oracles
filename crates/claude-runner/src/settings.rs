@@ -14,7 +14,7 @@
 //!    the relink reply never arrives.
 //! 2. `claude.v1.install.relink` — triggers claude-install's `handle_relink`;
 //!    the file rewrite happens in claude-install's per-capsule KV
-//!    namespace (distinct from sage's), so the new config travels
+//!    namespace (distinct from the runner's), so the new config travels
 //!    in-payload (see S2/S4 — `RelinkRequest` carries an optional
 //!    `config` field for cross-namespace propagation).
 //! 3. Bounded wait (≤ 5 s) for the matching `claude.v1.install.complete`

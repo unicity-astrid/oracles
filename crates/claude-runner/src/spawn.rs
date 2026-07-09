@@ -15,7 +15,7 @@
 //! Enforcement lives in the argv on purpose. Claude's tier precedence is
 //! `Managed > CLI args > Local (settings.local.json) > Project > User`.
 //! CLI args are the only session-un-overridable tier reachable from
-//! capsule-space — sage owns the full argv and execs `claude` directly,
+//! capsule-space — the runner owns the full argv and execs `claude` directly,
 //! so anything expressed as a flag here sits above every on-disk file
 //! tier and a running session cannot edit it away. Two flags carry that
 //! weight: `--disallowedTools` hoists the deny list out of the Local
@@ -34,7 +34,7 @@ const CLAUDE_BIN: &str = "claude";
 
 // ---- Persistent-tier spawn knobs --------------------------------------
 //
-// `claude -p` runs on the PERSISTENT process tier so it outlives a sage
+// `claude -p` runs on the PERSISTENT process tier so it outlives a runner
 // capsule reload; the supervisor re-`attach`es by ProcessId rather than
 // abandoning the conversation. These tune the host-side child lifecycle
 // (see `astrid_sdk::process::Command`).
@@ -43,7 +43,7 @@ const CLAUDE_BIN: &str = "claude";
 /// for this long is reaped by the host. A SUPERVISED session never idles —
 /// the supervisor reads its stdout every ~50 ms (see
 /// [`crate::supervisor::TICK_INTERVAL`]) — so this only catches a child
-/// sage permanently ABANDONED (e.g. the capsule fails to reload and never
+/// permanently ABANDONED (e.g. the capsule fails to reload and never
 /// re-attaches). Set far above any plausible reload gap (seconds) so a
 /// healthy child is never reaped mid-reload. NO `max_lifetime` is set: a
 /// legitimate agent task can run arbitrarily long and a wall-clock ceiling
@@ -53,7 +53,7 @@ const IDLE_REAP: Duration = Duration::from_secs(30 * 60);
 /// Post-exit retention: after `claude` exits the host keeps the id + drained
 /// log tail this long before auto-reaping. Sized to outlast a reload so a
 /// child that exits DURING the reload gap is still observable (exit code +
-/// tail) when the reconcile attaches — letting sage publish a truthful
+/// tail) when the reconcile attaches — letting the runner publish a truthful
 /// `exited` instead of a vague `lost`.
 const EXIT_RETENTION: Duration = Duration::from_secs(5 * 60);
 
@@ -67,7 +67,7 @@ const LOG_RING_BYTES: u32 = 4 * 1024 * 1024;
 /// Claude's tier precedence is `Managed > CLI args > Local
 /// (settings.local.json) > Project (settings.json) > User
 /// (~/.claude/settings.json)`. CLI args are the only
-/// session-un-overridable tier reachable from capsule-space: sage owns
+/// session-un-overridable tier reachable from capsule-space: the runner owns
 /// the full argv and execs `claude` directly, so a deny passed here as
 /// `--disallowedTools` sits above every on-disk file tier and a session
 /// cannot edit it away mid-run. The same list also rides in
@@ -83,7 +83,7 @@ const LOG_RING_BYTES: u32 = 4 * 1024 * 1024;
 /// session cannot reach around the sandbox via a tool the list forgot.
 ///
 /// SYNC: this list MUST be identical (same set) to
-/// `sage_install::layout::REQUIRED_DENIES` (claude-install/src/layout.rs).
+/// `claude_install::layout::REQUIRED_DENIES` (claude-install/src/layout.rs).
 /// The two crates have no dependency edge (each claude-runner crate is a
 /// `cdylib`-only workspace member, so one cannot import the other's const
 /// as a library without adding `rlib` to the producer's crate-type — a
@@ -127,7 +127,7 @@ const DENIED_TOOLS: &[&str] = &[
     "TeamDelete",
     // Scheduling / control flow — queue a future prompt, reschedule a
     // loop, or drive plan-mode / worktree transitions outside the runner's run
-    // loop. sage owns session lifecycle.
+    // loop. the runner owns session lifecycle.
     "CronCreate",
     "CronDelete",
     "CronList",
@@ -153,7 +153,7 @@ const DENIED_TOOLS: &[&str] = &[
     // allowlist). Re-enable deliberately, not by default.
     "WebFetch",
     "WebSearch",
-    // External / exfiltration surfaces — off-host channels sage does not
+    // External / exfiltration surfaces — off-host channels the runner does not
     // mediate.
     "PushNotification",
     "RemoteTrigger",
@@ -197,11 +197,11 @@ pub(crate) struct SpawnInputs<'a> {
     /// by `flags_hash` will see the same fingerprint regardless of how
     /// the subprocess authenticated.
     pub api_key: Option<&'a str>,
-    /// Per-(principal, session) random token, minted by sage at spawn
+    /// Per-(principal, session) random token, minted by the runner at spawn
     /// time and persisted in KV under
     /// `claude.hook_token.<principal>.<session>`. Threaded into the child
     /// env as `ASTRID_HOOK_TOKEN`; `astrid-emit` echoes it back in the
-    /// hook envelope so sage can distinguish authentic hook fires from
+    /// hook envelope so the runner can distinguish authentic hook fires from
     /// forged `claude.v1.hook.*` publishes. Always present
     /// (no Option) — every spawn gets a token. Must NEVER appear in
     /// argv: it would land in process listings / audit logs and the
@@ -255,12 +255,12 @@ fn argv(
         // Register EXACTLY the runner's own MCP server and nothing else.
         // `--strict-mcp-config` makes claude ignore every auto-discovered
         // `.mcp.json`; `--mcp-config` then points it at the single file
-        // claude-install authored under the principal's HOME, whose `sage`
+        // claude-install authored under the principal's HOME, whose `astrid`
         // server is `astrid mcp serve` (the rmcp stdio shim onto the
         // astrid-mcp broker — unicity-astrid/astrid#880). claude does the
         // native MCP handshake against it and discovers the `mcp__astrid__*`
         // tools from `tools/list`, then executes them DIRECTLY against that
-        // server over MCP — sage never sees or dispatches the calls. The
+        // server over MCP — the runner never sees or dispatches the calls. The
         // path is cwd-relative (cwd = HOME, set below) so the argv stays
         // byte-identical across principals — the per-principal identity
         // rides inside the file's argv, not here, to keep the `flags_hash`
@@ -384,11 +384,11 @@ pub(crate) fn spawn_claude(inputs: &SpawnInputs<'_>) -> Result<Spawned, SysError
         .cwd(inputs.home_path)
         // Persistent tier: keep the stdin pipe open so the supervisor can
         // write user turns / tool results across pooled-instance resets AND
-        // re-attach after a sage capsule reload. `label` surfaces the
+        // re-attach after a runner capsule reload. `label` surfaces the
         // session in `process::list`; the lifecycle knobs are documented on
         // their consts above.
         .keep_stdin_open(true)
-        .label(format!("sage:{}", inputs.session_id))
+        .label(format!("claude-runner:{}", inputs.session_id))
         .idle_timeout(IDLE_REAP)
         .exit_retention(EXIT_RETENTION)
         .log_ring_bytes(LOG_RING_BYTES);
@@ -632,7 +632,7 @@ mod tests {
     }
 
     /// Escape vectors that inject agents / plugins / extra dir-scope are
-    /// argv flags, NOT tool names — the deny list cannot touch them. sage
+    /// argv flags, NOT tool names — the deny list cannot touch them. the runner
     /// owns the full argv and must NEVER emit them (it never forwards
     /// user-controlled argv). Pin their absence so a future edit that adds
     /// one trips the build.
@@ -659,7 +659,7 @@ mod tests {
         }
     }
 
-    /// `DENIED_TOOLS` mirrors `sage_install::layout::REQUIRED_DENIES`
+    /// `DENIED_TOOLS` mirrors `claude_install::layout::REQUIRED_DENIES`
     /// across a crate boundary with no dependency edge. Guard the local
     /// copy's shape so an accidental trim is caught here: every entry is
     /// a bare tool name (no scope qualifier — a bare name removes the
@@ -680,7 +680,7 @@ mod tests {
     }
 
     /// Drift guard for the cross-crate mirror with
-    /// `sage_install::layout::REQUIRED_DENIES`.
+    /// `claude_install::layout::REQUIRED_DENIES`.
     ///
     /// No dependency edge exists between the two crates (each is a
     /// `cdylib`-only workspace member, so neither can import the other's
@@ -710,7 +710,7 @@ mod tests {
         // indirect-execution tools blocked even though Claude's dev tools
         // are allowed. Independently written (not derived from DENIED_TOOLS)
         // so it is a genuine cross-check, not a tautology. MUST match
-        // `sage_install::layout::REQUIRED_DENIES` exactly. The native dev
+        // `claude_install::layout::REQUIRED_DENIES` exactly. The native dev
         // tools (Bash/Read/Write/Edit/MultiEdit/NotebookEdit/Glob/Grep/Web*/
         // LSP/Monitor/BashOutput/KillShell/TodoWrite) are deliberately
         // ABSENT — they are allow-listed, sandbox-bounded, not removed.

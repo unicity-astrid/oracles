@@ -233,7 +233,7 @@ fn canonical_body_strips_session_id_and_token() {
 }
 
 /// The canonical body MUST preserve `principal_id` -- per the
-/// workflow brief, sage attributes the republish from its own
+/// workflow brief, the runner attributes the republish from its own
 /// capsule and the principal claim has no other channel onto the
 /// wire.
 #[test]
@@ -428,7 +428,7 @@ fn tokens_match_xor_accumulator_detects_single_byte_diff() {
     assert!(!tokens_match(&a, &c));
 }
 
-/// `hook_token_key` must round-trip through every place sage uses
+/// `hook_token_key` must round-trip through every place the runner uses
 /// it: spawn (`persist_token`), shutdown (`forget_token`), and
 /// run-loop (`lookup_token`). Pin the exact format so a refactor
 /// that changes the separator or the prefix surfaces here.
@@ -454,7 +454,7 @@ fn hook_token_key_format_is_stable_for_kv_lookups() {
 /// Cross-crate sync: the topic table claude-install reads (when
 /// authoring `settings.local.json`) must equal the runner's own
 /// validator table byte-for-byte. Right now the table is defined
-/// in both crates because there's no shared sage-common crate; this
+/// in both crates because there's no shared oracle-host crate; this
 /// test pins the LOCAL table's shape so a drift in claude-install
 /// surfaces in CI (claude-install's own test asserts the same).
 #[test]
