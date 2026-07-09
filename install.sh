@@ -3,8 +3,13 @@
 #
 #   curl -fsSL https://astridos.org/install.sh | sh
 #
-# Quiet: only checkmarks of what ran. Does CLI + base + detected host
-# plugins (marketplace) + host capsules (astrid init). Re-run upgrades.
+# One status line per step: box spinner + elapsed bar while it runs, a
+# checkmark when it lands. Does CLI + base home + detected host plugins
+# (marketplace) + host capsules. Re-run upgrades everything in place.
+#
+# Flags ride after `sh -s --`:
+#
+#   curl -fsSL https://astridos.org/install.sh | sh -s -- --host claude --verbose
 set -eu
 
 ORACLES_REPO="${ASTRID_ORACLES_REPO:-unicity-astrid/oracles}"
@@ -14,30 +19,91 @@ ASTRID_MANAGED_BIN="${ASTRID_HOME:-$HOME/.astrid}/bin"
 BREW_TAP="${ASTRID_BREW_TAP:-unicity-astrid/tap}"
 BREW_FORMULA="${ASTRID_BREW_FORMULA:-astrid}"
 
+VERBOSE=0
 NO_BREW=0
 BASE_ONLY=0
+SKIP_INIT=0
 ALL_HOSTS=0
 REQUESTED_HOSTS=""
 BIN_ROOT="${ASTRID_BIN_ROOT:-}"
 ASTRID=""
+FAILED=0
+SPIN_PID=""
+CLEAN_TMP=""
+SPIN_TTY=0
+[ -t 1 ] && SPIN_TTY=1
 
 have() { command -v "$1" >/dev/null 2>&1; }
 say()  { printf '%s\n' "$*"; }
-die()  { say "✗ $*" >&2; exit 1; }
-ok()   { say "✓ $*"; }
-fail() { say "✗ $*"; }
+
+# Run a subcommand quietly; pass its output through under --verbose.
+q() { if [ "$VERBOSE" -eq 1 ]; then "$@"; else "$@" >/dev/null 2>&1; fi; }
+
+# --- status bar: box spinner + elapsed rectangle ----------------------------
+spin_start() {
+  if [ "$SPIN_TTY" -eq 0 ] || [ "$VERBOSE" -eq 1 ]; then return 0; fi
+  _label="$1"
+  (
+    start="$(date +%s)"
+    i=0
+    while :; do
+      now="$(date +%s)"
+      el=$((now - start))
+      filled=$((el / 3))
+      [ "$filled" -gt 10 ] && filled=10
+      bar=""
+      j=0
+      while [ "$j" -lt 10 ]; do
+        if [ "$j" -lt "$filled" ]; then bar="${bar}▮"; else bar="${bar}▯"; fi
+        j=$((j + 1))
+      done
+      case "$i" in 0) f="◰" ;; 1) f="◳" ;; 2) f="◲" ;; *) f="◱" ;; esac
+      printf '\r\033[K%s %s %s %ss' "$f" "$_label" "$bar" "$el"
+      i=$(((i + 1) % 4))
+      sleep 0.2 2>/dev/null || sleep 1
+    done
+  ) &
+  SPIN_PID=$!
+}
+
+spin_stop() {
+  if [ -z "$SPIN_PID" ]; then return 0; fi
+  kill "$SPIN_PID" 2>/dev/null || true
+  wait "$SPIN_PID" 2>/dev/null || true
+  SPIN_PID=""
+  [ "$SPIN_TTY" -eq 1 ] && printf '\r\033[K'
+  return 0
+}
+
+ok()   { spin_stop; say "✓ $*"; }
+fail() { spin_stop; say "✗ $*"; FAILED=$((FAILED + 1)); }
+warn() { spin_stop; say "! $*"; }
+die()  { spin_stop; say "✗ $*" >&2; exit 1; }
+
+cleanup() {
+  spin_stop
+  if [ -n "$CLEAN_TMP" ]; then rm -rf "$CLEAN_TMP" 2>/dev/null || true; fi
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 usage() {
   cat <<'EOF'
 curl -fsSL https://astridos.org/install.sh | sh
 
 One command: CLI, base home, plugins + capsules for hosts on this machine.
+Re-run any time to upgrade. Flags go after `sh -s --`:
+
+  curl -fsSL https://astridos.org/install.sh | sh -s -- --host claude --verbose
 
   --host NAME   only this host (claude|grok|codex), repeatable
   --all         every host
   --base-only   skip host plugins/capsules
+  --skip-init   skip base-home init
   --no-brew     never use Homebrew
   --bin-root D  use astrid from D
+  --verbose     show subcommand output (disables the status bar)
   -h, --help
 EOF
 }
@@ -49,20 +115,22 @@ while [ "$#" -gt 0 ]; do
       h="${1:-}"
       case "$h" in
         claude|grok|codex) REQUESTED_HOSTS="${REQUESTED_HOSTS} ${h}" ;;
-        *) die "unknown host '$h'" ;;
+        *) die "unknown host '$h' (want claude|grok|codex)" ;;
       esac
       ;;
     --all) ALL_HOSTS=1 ;;
     --base-only) BASE_ONLY=1 ;;
+    --skip-init) SKIP_INIT=1 ;;
     --no-brew) NO_BREW=1 ;;
     --bin-root)
       shift
       BIN_ROOT="${1:-}"
       [ -n "$BIN_ROOT" ] || die "--bin-root needs a path"
       ;;
-    --yes|-y|--upgrade|--verbose|-v|--skip-init) ;; # accepted for compat
+    --verbose|-v) VERBOSE=1 ;;
+    --yes|-y|--upgrade) ;; # accepted for compat (always non-interactive)
     -h|--help) usage; exit 0 ;;
-    *) die "unknown argument: $1" ;;
+    *) die "unknown argument: $1 (try --help)" ;;
   esac
   shift
 done
@@ -74,6 +142,8 @@ fi
 
 has_pair() { [ -n "$1" ] && [ -x "$1/astrid" ] && [ -x "$1/astrid-daemon" ]; }
 
+cli_version() { "$1" --version 2>/dev/null | head -n1 | awk '{ print $NF }'; }
+
 platform_target() {
   os="$(uname -s 2>/dev/null || echo unknown)"
   arch="$(uname -m 2>/dev/null || echo unknown)"
@@ -82,80 +152,87 @@ platform_target() {
     Darwin/x86_64)               printf 'x86_64-apple-darwin\n' ;;
     Linux/x86_64|Linux/amd64)    printf 'x86_64-unknown-linux-gnu\n' ;;
     Linux/aarch64|Linux/arm64)   printf 'aarch64-unknown-linux-gnu\n' ;;
-    *) die "unsupported platform ${os}/${arch}" ;;
+    *) return 1 ;;
   esac
 }
 
 sha256_file() {
   if have sha256sum; then sha256sum "$1" | awk '{ print $1 }'
   elif have shasum; then shasum -a 256 "$1" | awk '{ print $1 }'
-  else die "need sha256sum or shasum"
+  else return 1
   fi
 }
 
+# Install from GitHub Releases. Never exits: returns 1 so brew can back it up.
 install_from_github() {
-  target="$(platform_target)"
-  tmp="$(mktemp -d 2>/dev/null || mktemp -d -t astrid-install)"
-  # shellcheck disable=SC2064
-  trap 'rm -rf "$tmp" 2>/dev/null || true' EXIT
+  target="$(platform_target)" || { warn "unsupported platform $(uname -s 2>/dev/null)/$(uname -m 2>/dev/null)"; return 1; }
+  have curl || { warn "curl required for GitHub releases"; return 1; }
+  tmp="$(mktemp -d 2>/dev/null || mktemp -d -t astrid-install)" || { warn "mktemp failed"; return 1; }
+  CLEAN_TMP="$tmp"
 
+  auth="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
   if [ -n "${ASTRID_VERSION:-}" ]; then
     tag="v${ASTRID_VERSION#v}"
   else
-    have curl || die "curl required"
     api="https://api.github.com/repos/${ASTRID_RELEASE_REPO}/releases/latest"
-    meta="$(curl -fsSL --max-time 30 \
-      ${GH_TOKEN:+-H "Authorization: Bearer ${GH_TOKEN}"} \
-      ${GITHUB_TOKEN:+-H "Authorization: Bearer ${GITHUB_TOKEN}"} \
-      "$api")" || die "could not query GitHub releases"
+    meta="$(curl -fsSL --max-time 30 ${auth:+-H "Authorization: Bearer ${auth}"} "$api")" \
+      || { warn "could not query GitHub releases"; return 1; }
     tag="$(printf '%s' "$meta" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
-    [ -n "$tag" ] || die "latest release has no tag_name"
+    [ -n "$tag" ] || { warn "latest release has no tag"; return 1; }
   fi
   version="${tag#v}"
   asset="astrid-${version}-${target}.tar.gz"
   base="https://github.com/${ASTRID_RELEASE_REPO}/releases/download/${tag}"
 
-  curl -fsSL --max-time 120 -o "$tmp/$asset" "${base}/${asset}" || die "download failed"
-  curl -fsSL --max-time 30 -o "$tmp/SHA256SUMS.txt" "${base}/SHA256SUMS.txt" || die "no SHA256SUMS"
-  expected="$(awk -v a="$asset" '$2 == a || $2 == "./"a || index($0, a) { print $1; exit }' "$tmp/SHA256SUMS.txt")"
-  [ -n "$expected" ] || die "no checksum for $asset"
-  actual="$(sha256_file "$tmp/$asset")"
-  [ "$expected" = "$actual" ] || die "checksum mismatch"
+  curl -fsSL --max-time 120 -o "$tmp/$asset" "${base}/${asset}" || { warn "download failed: $asset"; return 1; }
+  curl -fsSL --max-time 30 -o "$tmp/SHA256SUMS.txt" "${base}/SHA256SUMS.txt" || { warn "release has no SHA256SUMS.txt"; return 1; }
+  expected="$(awk -v a="$asset" '$2 == a || $2 == "./"a { print $1; exit }' "$tmp/SHA256SUMS.txt")"
+  [ -n "$expected" ] || { warn "no checksum for $asset"; return 1; }
+  actual="$(sha256_file "$tmp/$asset")" || { warn "need sha256sum or shasum"; return 1; }
+  [ "$expected" = "$actual" ] || { warn "checksum mismatch for $asset"; return 1; }
 
-  mkdir -p "$ASTRID_MANAGED_BIN"
-  tar -xzf "$tmp/$asset" -C "$tmp"
+  mkdir -p "$ASTRID_MANAGED_BIN" || { warn "cannot create $ASTRID_MANAGED_BIN"; return 1; }
+  tar -xzf "$tmp/$asset" -C "$tmp" || { warn "extract failed"; return 1; }
   found=""
   for d in "$tmp"/* "$tmp"; do
     [ -d "$d" ] || continue
     if [ -x "$d/astrid" ] && [ -x "$d/astrid-daemon" ]; then found="$d"; break; fi
   done
-  [ -n "$found" ] || die "archive missing astrid + astrid-daemon"
-  for b in astrid astrid-daemon astrid-build; do
-    [ -x "$found/$b" ] && cp -f "$found/$b" "$ASTRID_MANAGED_BIN/$b" && chmod 755 "$ASTRID_MANAGED_BIN/$b"
+  [ -n "$found" ] || { warn "archive missing astrid + astrid-daemon"; return 1; }
+  for b in astrid astrid-daemon astrid-build astrid-emit; do
+    if [ -x "$found/$b" ]; then
+      cp -f "$found/$b" "$ASTRID_MANAGED_BIN/$b" || { warn "cannot write $ASTRID_MANAGED_BIN/$b"; return 1; }
+      chmod 755 "$ASTRID_MANAGED_BIN/$b" 2>/dev/null || true
+    fi
   done
   export PATH="${ASTRID_MANAGED_BIN}:${PATH}"
   ASTRID="$ASTRID_MANAGED_BIN/astrid"
   export ASTRID_BIN_ROOT="$ASTRID_MANAGED_BIN"
 
   case "$(uname -s 2>/dev/null)" in Darwin) path_rc="$HOME/.zprofile" ;; *) path_rc="$HOME/.profile" ;; esac
-  if [ -n "$path_rc" ] && ! grep -qF '.astrid/bin' "$path_rc" 2>/dev/null; then
-    printf '\n# Astrid CLI\nexport PATH="%s:$PATH"\n' "$ASTRID_MANAGED_BIN" >> "$path_rc"
+  if ! grep -qsF "$ASTRID_MANAGED_BIN" "$path_rc"; then
+    printf '\n# Astrid CLI\nexport PATH="%s:$PATH"\n' "$ASTRID_MANAGED_BIN" >> "$path_rc" 2>/dev/null || true
   fi
-  trap - EXIT
   rm -rf "$tmp" 2>/dev/null || true
+  CLEAN_TMP=""
+  return 0
 }
 
 ensure_cli() {
+  spin_start "CLI"
   if [ -n "$BIN_ROOT" ]; then
-    has_pair "$BIN_ROOT" || die "--bin-root incomplete"
+    has_pair "$BIN_ROOT" || die "--bin-root missing astrid + astrid-daemon: $BIN_ROOT"
     ASTRID="$BIN_ROOT/astrid"
     export ASTRID_BIN_ROOT="$BIN_ROOT"
-    ok "CLI $($ASTRID --version 2>/dev/null | head -n1)"
+    ok "CLI $(cli_version "$ASTRID") (--bin-root)"
     return 0
   fi
-  if [ -n "${ASTRID_BIN:-}" ] && [ -x "$ASTRID_BIN" ]; then
+  if [ -n "${ASTRID_BIN:-}" ]; then
+    _dir="$(dirname "$ASTRID_BIN")"
+    has_pair "$_dir" || die "ASTRID_BIN dir missing astrid + astrid-daemon: $_dir"
     ASTRID="$ASTRID_BIN"
-    ok "CLI $($ASTRID --version 2>/dev/null | head -n1)"
+    export ASTRID_BIN_ROOT="$_dir"
+    ok "CLI $(cli_version "$ASTRID") (ASTRID_BIN)"
     return 0
   fi
 
@@ -165,53 +242,55 @@ ensure_cli() {
     export ASTRID_BIN_ROOT="$ASTRID_MANAGED_BIN"
   elif have astrid; then
     ASTRID="$(command -v astrid)"
-  else
-    ASTRID=""
   fi
 
   if [ -n "$ASTRID" ] && [ -x "$ASTRID" ]; then
-    if "$ASTRID" update -y >/dev/null 2>&1; then
+    before="$(cli_version "$ASTRID")"
+    if q "$ASTRID" update -y; then
       if has_pair "$ASTRID_MANAGED_BIN"; then
         export PATH="${ASTRID_MANAGED_BIN}:${PATH}"
         ASTRID="$ASTRID_MANAGED_BIN/astrid"
       elif have astrid; then
         ASTRID="$(command -v astrid)"
       fi
-      ok "CLI $($ASTRID --version 2>/dev/null | head -n1)"
+    fi
+    after="$(cli_version "$ASTRID")"
+    if [ -n "$before" ] && [ -n "$after" ] && [ "$before" != "$after" ]; then
+      ok "CLI ${after} (updated from ${before})"
     else
-      ok "CLI $($ASTRID --version 2>/dev/null | head -n1)"
+      ok "CLI ${after:-unknown} (up to date)"
     fi
     return 0
   fi
 
   if install_from_github; then
-    ok "CLI $($ASTRID --version 2>/dev/null | head -n1)"
+    ok "CLI $(cli_version "$ASTRID") (installed)"
     return 0
   fi
   if [ "$NO_BREW" -eq 0 ] && have brew; then
-    brew tap "$BREW_TAP" >/dev/null 2>&1 || true
-    brew install "${BREW_TAP}/${BREW_FORMULA}" >/dev/null 2>&1 \
-      || brew install "$BREW_FORMULA" >/dev/null 2>&1 \
+    spin_start "CLI (brew)"
+    q brew tap "$BREW_TAP" || true
+    q brew install "${BREW_TAP}/${BREW_FORMULA}" || q brew install "$BREW_FORMULA" \
       || die "Homebrew install failed"
     ASTRID="$(command -v astrid)" || die "no astrid on PATH after brew"
-    ok "CLI $($ASTRID --version 2>/dev/null | head -n1)"
+    ok "CLI $(cli_version "$ASTRID") (brew)"
     return 0
   fi
-  die "could not install Astrid"
+  die "could not install Astrid (GitHub releases failed; brew unavailable)"
 }
 
 ensure_base() {
+  if [ "$SKIP_INIT" -eq 1 ]; then return 0; fi
+  spin_start "base home"
   home="${ASTRID_HOME:-$HOME/.astrid}"
-  if [ -d "$home/home/default" ] || [ -f "$home/config.toml" ] \
-    || [ -f "$home/home/default/.config/distro.lock" ] \
-    || [ -f "$home/home/default/.config/Distro.lock" ]; then
+  if [ -d "$home/home/default" ] || [ -f "$home/config.toml" ]; then
     ok "base home"
     return 0
   fi
-  if "$ASTRID" init -y >/dev/null 2>&1; then
-    ok "base home"
+  if q "$ASTRID" init -y; then
+    ok "base home (initialized)"
   else
-    fail "base home (astrid init) — try: astrid doctor"
+    fail "base home (astrid init) — run: astrid doctor"
   fi
 }
 
@@ -246,8 +325,7 @@ pretty() {
   esac
 }
 
-# --- Plugin present? / install or update ------------------------------------
-# Re-run must not reinstall blindly: check → update if present, else install.
+# --- plugins: detect, then update-or-install (verbs verified per host) -------
 
 claude_bin() {
   if have claude; then command -v claude
@@ -256,114 +334,103 @@ claude_bin() {
   fi
 }
 
-# Any astrid marketplace install counts (astrid@astrid-oracles or legacy astrid@astrid).
-claude_plugin_id() {
-  bin="$1"
-  list="$("$bin" plugin list 2>/dev/null || true)"
-  if printf '%s' "$list" | grep -qE 'astrid@astrid-oracles'; then
-    printf 'astrid@astrid-oracles\n'
-  elif printf '%s' "$list" | grep -qE 'astrid@astrid\b'; then
-    printf 'astrid@astrid\n'
-  else
-    printf ''
-  fi
+# Version of an exactly-matching installed claude plugin id ('' if absent).
+claude_plugin_version() {
+  _cbin="$1"
+  "$_cbin" plugin list 2>/dev/null | awk -v id="$2" '
+    f && /Version:/ { print $2; exit }
+    $0 ~ (id "($|[^-A-Za-z0-9_])") { f = 1 }
+  '
 }
 
-grok_plugin_present() {
-  list="$(grok plugin list 2>/dev/null || true)"
-  # name can be astrid, astrid-plugin-*, or legacy mimir
-  printf '%s' "$list" | grep -qiE '(^|[[:space:]])astrid([@-]|[[:space:]]|$)|mimir'
+grok_plugin_installed() {
+  grok plugin list 2>/dev/null | grep -F ': astrid [' | grep -qF '(astrid-oracles)'
 }
 
-codex_plugin_installed() {
-  # codex plugin list: "astrid@…  installed|not installed" — avoid matching "not installed"
-  list="$(codex plugin list 2>/dev/null || true)"
-  printf '%s\n' "$list" | grep -E 'astrid@' | grep -v 'not installed' | grep -q 'installed'
-}
-
-ensure_marketplace() {
-  host="$1"
-  case "$host" in
-    claude)
-      bin="$(claude_bin)"
-      [ -n "$bin" ] && "$bin" plugin marketplace add "$ORACLES_REPO" >/dev/null 2>&1 || true
-      ;;
-    grok)  grok plugin marketplace add "$ORACLES_REPO" >/dev/null 2>&1 || true ;;
-    codex) codex plugin marketplace add "$ORACLES_REPO" >/dev/null 2>&1 || true ;;
-  esac
+codex_plugin_version() {
+  codex plugin list 2>/dev/null | grep -F 'astrid@astrid-oracles' | grep -v 'not installed' \
+    | grep 'installed' | head -n1 \
+    | awk '{ for (i = 1; i <= NF; i++) if ($i ~ /^[0-9][0-9.]*$/) { print $i; exit } }'
 }
 
 install_plugin() {
   host="$1"
   label="$(pretty "$host")"
+  spin_start "$label plugin"
   case "$host" in
     claude)
-      bin="$(claude_bin)"
-      if [ -z "$bin" ]; then
-        fail "$label plugin (no claude CLI)"
-        return 1
+      cbin="$(claude_bin)"
+      if [ -z "$cbin" ]; then fail "$label plugin (no claude CLI)"; return 1; fi
+      q "$cbin" plugin marketplace add "$ORACLES_REPO" || true
+      q "$cbin" plugin marketplace update astrid-oracles || true
+      legacy="$(claude_plugin_version "$cbin" "astrid@astrid")"
+      if [ -n "$legacy" ]; then
+        q "$cbin" plugin uninstall astrid@astrid || true
       fi
-      ensure_marketplace claude
-      id="$(claude_plugin_id "$bin")"
-      if [ -n "$id" ]; then
-        if "$bin" plugin update "$id" >/dev/null 2>&1; then
-          ok "$label plugin (updated $id)"
+      cur="$(claude_plugin_version "$cbin" "astrid@astrid-oracles")"
+      if [ -n "$cur" ]; then
+        q "$cbin" plugin update astrid@astrid-oracles || true
+        new="$(claude_plugin_version "$cbin" "astrid@astrid-oracles")"
+        if [ -n "$new" ] && [ "$new" != "$cur" ]; then
+          ok "$label plugin ${new} (updated from ${cur}${legacy:+; removed legacy astrid@astrid})"
         else
-          ok "$label plugin (already $id)"
+          ok "$label plugin ${cur} (up to date${legacy:+; removed legacy astrid@astrid})"
         fi
       else
-        if "$bin" plugin install astrid@astrid-oracles >/dev/null 2>&1 \
-          || "$bin" plugin install astrid@astrid >/dev/null 2>&1; then
-          ok "$label plugin (installed)"
+        if q "$cbin" plugin install astrid@astrid-oracles; then
+          new="$(claude_plugin_version "$cbin" "astrid@astrid-oracles")"
+          ok "$label plugin${new:+ ${new}} (installed${legacy:+; replaced legacy astrid@astrid})"
         else
-          fail "$label plugin"
+          fail "$label plugin (claude plugin install astrid@astrid-oracles)"
           return 1
         fi
       fi
       ;;
     grok)
-      if ! have grok; then
-        fail "$label plugin (no grok CLI)"
-        return 1
-      fi
-      ensure_marketplace grok
-      if grok_plugin_present; then
-        if grok plugin update astrid >/dev/null 2>&1 \
-          || grok plugin update >/dev/null 2>&1; then
-          ok "$label plugin (updated)"
+      if ! have grok; then fail "$label plugin (no grok CLI)"; return 1; fi
+      q grok plugin marketplace add "$ORACLES_REPO" || true
+      q grok plugin marketplace update || true
+      if grok_plugin_installed; then
+        gout="$(grok plugin update astrid 2>&1)" || true
+        if [ "$VERBOSE" -eq 1 ]; then say "$gout"; fi
+        vers="$(printf '%s' "$gout" | sed -n 's/.*(\([^ ]*\) -> \([^)]*\)).*/\1 \2/p' | head -n1)"
+        vfrom="${vers%% *}"
+        vto="${vers##* }"
+        if [ -n "$vers" ] && [ "$vfrom" != "$vto" ]; then
+          ok "$label plugin ${vto} (updated from ${vfrom})"
         else
-          ok "$label plugin (already present)"
+          ok "$label plugin${vto:+ ${vto}} (up to date)"
         fi
       else
-        if grok plugin install astrid@astrid-oracles >/dev/null 2>&1 \
-          || grok plugin install "https://github.com/${ORACLES_REPO}" >/dev/null 2>&1; then
+        # grok pins marketplace plugins by repo shorthand: astrid@owner/repo
+        if q grok plugin install "astrid@${ORACLES_REPO}" --trust; then
           ok "$label plugin (installed)"
         else
-          fail "$label plugin"
+          fail "$label plugin (grok plugin install astrid@${ORACLES_REPO})"
           return 1
         fi
       fi
       ;;
     codex)
-      if ! have codex; then
-        fail "$label plugin (no codex CLI)"
-        return 1
-      fi
-      ensure_marketplace codex
-      if codex_plugin_installed; then
-        # Codex has no dedicated "plugin update"; re-add marketplace + add is upgrade path
-        if codex plugin marketplace upgrade astrid-oracles >/dev/null 2>&1 \
-          || codex plugin add astrid@astrid-oracles >/dev/null 2>&1; then
-          ok "$label plugin (checked)"
+      if ! have codex; then fail "$label plugin (no codex CLI)"; return 1; fi
+      q codex plugin marketplace add "$ORACLES_REPO" || true
+      q codex plugin marketplace upgrade astrid-oracles || true
+      cur="$(codex_plugin_version)"
+      # `codex plugin add` is idempotent and doubles as the upgrade path.
+      if q codex plugin add astrid@astrid-oracles; then
+        new="$(codex_plugin_version)"
+        if [ -n "$cur" ] && [ -n "$new" ] && [ "$new" != "$cur" ]; then
+          ok "$label plugin ${new} (updated from ${cur})"
+        elif [ -n "$cur" ]; then
+          ok "$label plugin ${cur} (up to date)"
         else
-          ok "$label plugin (already present)"
+          ok "$label plugin${new:+ ${new}} (installed)"
         fi
       else
-        if codex plugin add astrid@astrid-oracles >/dev/null 2>&1 \
-          || codex plugin install astrid@astrid-oracles >/dev/null 2>&1; then
-          ok "$label plugin (installed)"
+        if [ -n "$cur" ]; then
+          ok "$label plugin ${cur} (kept)"
         else
-          fail "$label plugin"
+          fail "$label plugin (codex plugin add astrid@astrid-oracles)"
           return 1
         fi
       fi
@@ -372,9 +439,8 @@ install_plugin() {
 }
 
 principal_has_lock() {
-  p="$1"
-  home="${ASTRID_HOME:-$HOME/.astrid}"
-  [ -f "$home/home/${p}/.config/distro.lock" ] || [ -f "$home/home/${p}/.config/Distro.lock" ]
+  _home="${ASTRID_HOME:-$HOME/.astrid}"
+  [ -f "$_home/home/$1/.config/distro.lock" ] || [ -f "$_home/home/$1/.config/Distro.lock" ]
 }
 
 install_capsules() {
@@ -382,16 +448,18 @@ install_capsules() {
   p="$(principal_for "$host")"
   d="$(distro_url "$host")"
   label="$(pretty "$host")"
+  spin_start "$label capsules"
   # Seed default once if empty (daemon uplink); init is a no-op when lock fresh.
   if ! principal_has_lock default; then
-    "$ASTRID" init --distro "$d" -y >/dev/null 2>&1 || true
+    q "$ASTRID" init --distro "$d" -y || true
   fi
 
-  out="$("$ASTRID" init --distro "$d" --principal "$p" -y 2>&1)" && rc=0 || rc=$?
+  had_lock=0
+  if principal_has_lock "$p"; then had_lock=1; fi
+  iout="$("$ASTRID" init --distro "$d" --principal "$p" -y 2>&1)" && rc=0 || rc=$?
+  if [ "$VERBOSE" -eq 1 ]; then say "$iout"; fi
   if [ "$rc" -eq 0 ]; then
-    if printf '%s' "$out" | grep -qi 'already installed\|up to date'; then
-      ok "$label capsules (up to date · $p)"
-    elif principal_has_lock "$p"; then
+    if [ "$had_lock" -eq 1 ]; then
       ok "$label capsules (up to date · $p)"
     else
       ok "$label capsules (installed · $p)"
@@ -400,14 +468,9 @@ install_capsules() {
     if principal_has_lock "$p"; then
       ok "$label capsules (kept · $p)"
     else
-      fail "$label capsules ($p) — need GH_TOKEN?"
+      fail "$label capsules ($p) — need GH_TOKEN? re-run with --verbose"
     fi
   fi
-}
-
-wire_host() {
-  install_plugin "$1" || true
-  install_capsules "$1"
 }
 
 main() {
@@ -422,8 +485,14 @@ main() {
     ok "hosts (none detected — base only)"
   else
     for h in "$@"; do
-      wire_host "$h"
+      install_plugin "$h" || true
+      install_capsules "$h"
     done
+  fi
+
+  if [ "$FAILED" -gt 0 ]; then
+    say "— ${FAILED} step(s) failed · retry loudly: curl -fsSL https://astridos.org/install.sh | sh -s -- --verbose"
+    exit 1
   fi
 }
 
