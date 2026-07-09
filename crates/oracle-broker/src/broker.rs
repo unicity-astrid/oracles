@@ -146,14 +146,18 @@ pub(crate) fn handle_mcp_list(payload: Value) -> Result<(), SysError> {
         Err(e) => {
             // No recoverable req_id — there is no channel to reply on,
             // so the proxy will time out its own request. Log and drop.
-            log::warn(format!("{}: broker tools.list: malformed payload (no req_id): {e}", crate::profile::log_tag()));
+            log::warn(format!(
+                "{}: broker tools.list: malformed payload (no req_id): {e}",
+                crate::profile::log_tag()
+            ));
             return Ok(());
         }
     };
 
     let Some(reply_topic) = reply_topic(&req.req_id) else {
         log::warn(format!(
-            "{}: broker tools.list: rejecting unroutable req_id '{}'", crate::profile::log_tag(),
+            "{}: broker tools.list: rejecting unroutable req_id '{}'",
+            crate::profile::log_tag(),
             req.req_id
         ));
         return Ok(());
@@ -162,8 +166,9 @@ pub(crate) fn handle_mcp_list(payload: Value) -> Result<(), SysError> {
     let started = discovery::wall_ms();
     let (source_id, principal) = caller_fields();
     log::info(format!(
-            "{}: broker ingress method=tools.list req_id={} source_id={source_id} \
-         principal={principal}", crate::profile::log_tag(),
+        "{}: broker ingress method=tools.list req_id={} source_id={source_id} \
+         principal={principal}",
+        crate::profile::log_tag(),
         req.req_id
     ));
 
@@ -178,8 +183,9 @@ pub(crate) fn handle_mcp_list(payload: Value) -> Result<(), SysError> {
     });
     publish_reply(&reply_topic, &reply);
     log::info(format!(
-            "{}: broker response method=tools.list req_id={} outcome=ok tools={tool_count} \
-         elapsed_ms={}", crate::profile::log_tag(),
+        "{}: broker response method=tools.list req_id={} outcome=ok tools={tool_count} \
+         elapsed_ms={}",
+        crate::profile::log_tag(),
         req.req_id,
         discovery::wall_ms().saturating_sub(started)
     ));
@@ -198,14 +204,18 @@ pub(crate) fn handle_mcp_call(payload: Value) -> Result<(), SysError> {
     let req: CallRequest = match serde_json::from_value(payload) {
         Ok(v) => v,
         Err(e) => {
-            log::warn(format!("{}: broker tool.call: malformed payload (no req_id): {e}", crate::profile::log_tag()));
+            log::warn(format!(
+                "{}: broker tool.call: malformed payload (no req_id): {e}",
+                crate::profile::log_tag()
+            ));
             return Ok(());
         }
     };
 
     let Some(reply_topic) = reply_topic(&req.req_id) else {
         log::warn(format!(
-            "{}: broker tool.call: rejecting unroutable req_id '{}'", crate::profile::log_tag(),
+            "{}: broker tool.call: rejecting unroutable req_id '{}'",
+            crate::profile::log_tag(),
             req.req_id
         ));
         return Ok(());
@@ -231,12 +241,14 @@ pub(crate) fn handle_mcp_call(payload: Value) -> Result<(), SysError> {
             .and_then(Value::as_str)
             .unwrap_or("");
         log::info(format!(
-            "{}: broker ingress method=pretooluse_gate req_id={} tool={native}", crate::profile::log_tag(),
+            "{}: broker ingress method=pretooluse_gate req_id={} tool={native}",
+            crate::profile::log_tag(),
             req.req_id
         ));
         publish_reply(&reply_topic, &pretooluse_gate_reply(&req));
         log::info(format!(
-            "{}: broker response method=pretooluse_gate req_id={} outcome=ok elapsed_ms={}", crate::profile::log_tag(),
+            "{}: broker response method=pretooluse_gate req_id={} outcome=ok elapsed_ms={}",
+            crate::profile::log_tag(),
             req.req_id,
             discovery::wall_ms().saturating_sub(started)
         ));
@@ -267,8 +279,10 @@ pub(crate) fn handle_mcp_call(payload: Value) -> Result<(), SysError> {
             // No caller context — cannot attribute the ingress. Fail
             // closed rather than dispatch an unattributed mutation.
             log::warn(format!(
-            "{}: broker tool.call: no caller context, rejecting req_id={} tool={}: {e}", crate::profile::log_tag(),
-                req.req_id, req.name
+                "{}: broker tool.call: no caller context, rejecting req_id={} tool={}: {e}",
+                crate::profile::log_tag(),
+                req.req_id,
+                req.name
             ));
             let reply = json!({
                 "kind": "tool.call",
@@ -287,8 +301,9 @@ pub(crate) fn handle_mcp_call(payload: Value) -> Result<(), SysError> {
     // only, never arguments (an argument may carry a secret; INFO must not
     // leak it). `arg_count` is the cheap, non-sensitive shape signal.
     log::info(format!(
-            "{}: broker ingress method=tool.call req_id={} source_id={source_id} \
-         principal={} tool={} arg_count={}", crate::profile::log_tag(),
+        "{}: broker ingress method=tool.call req_id={} source_id={source_id} \
+         principal={} tool={} arg_count={}",
+        crate::profile::log_tag(),
         req.req_id,
         display_principal(&principal),
         req.name,
@@ -300,8 +315,10 @@ pub(crate) fn handle_mcp_call(payload: Value) -> Result<(), SysError> {
         // mutation was withheld pending a human accept, security-relevant).
         log::warn(format!(
             "{}: broker trust=consent-required req_id={} source_id={source_id} tool={}; \
-             requesting interactive consent", crate::profile::log_tag(),
-            req.req_id, req.name
+             requesting interactive consent",
+            crate::profile::log_tag(),
+            req.req_id,
+            req.name
         ));
         // Record that a consent prompt is now outstanding for this ingress.
         // The respond handler ([`crate::approval::handle_mcp_ingress_respond`])
@@ -328,7 +345,8 @@ pub(crate) fn handle_mcp_call(payload: Value) -> Result<(), SysError> {
         publish_reply(&reply_topic, &reply);
         log::info(format!(
             "{}: broker response method=tool.call req_id={} outcome=consent_required \
-             tool={} elapsed_ms={}", crate::profile::log_tag(),
+             tool={} elapsed_ms={}",
+            crate::profile::log_tag(),
             req.req_id,
             req.name,
             discovery::wall_ms().saturating_sub(started)
@@ -338,8 +356,10 @@ pub(crate) fn handle_mcp_call(payload: Value) -> Result<(), SysError> {
 
     // Trust decision: source_id is a trusted ingress → proceed to dispatch.
     log::info(format!(
-            "{}: broker trust=trusted req_id={} source_id={source_id} tool={}", crate::profile::log_tag(),
-        req.req_id, req.name
+        "{}: broker trust=trusted req_id={} source_id={source_id} tool={}",
+        crate::profile::log_tag(),
+        req.req_id,
+        req.name
     ));
 
     // Argument-level policy gate — the binding PDP. Evaluated in-process
@@ -358,8 +378,10 @@ pub(crate) fn handle_mcp_call(payload: Value) -> Result<(), SysError> {
         // A received request that will NOT be dispatched → WARN (never silent).
         // `rule` is the operator's static rule id, never a reflected argument.
         log::warn(format!(
-            "{}: broker policy-deny req_id={} tool={} rule={reason}", crate::profile::log_tag(),
-            req.req_id, req.name
+            "{}: broker policy-deny req_id={} tool={} rule={reason}",
+            crate::profile::log_tag(),
+            req.req_id,
+            req.name
         ));
         let _ = ipc::publish_json(
             &crate::profile::audit_topic("policy_deny"),
@@ -374,7 +396,8 @@ pub(crate) fn handle_mcp_call(payload: Value) -> Result<(), SysError> {
         publish_reply(&reply_topic, &reply);
         log::info(format!(
             "{}: broker response method=tool.call req_id={} outcome=policy_denied \
-             tool={} elapsed_ms={}", crate::profile::log_tag(),
+             tool={} elapsed_ms={}",
+            crate::profile::log_tag(),
             req.req_id,
             req.name,
             discovery::wall_ms().saturating_sub(started)
@@ -385,8 +408,11 @@ pub(crate) fn handle_mcp_call(payload: Value) -> Result<(), SysError> {
     // Routing milestone — the broker is about to dispatch the execute to the
     // providing capsule via the routed `tool.v1.execute.<tool>` topic.
     log::info(format!(
-            "{}: broker route req_id={} tool={} topic=tool.v1.execute.{}", crate::profile::log_tag(),
-        req.req_id, req.name, req.name
+        "{}: broker route req_id={} tool={} topic=tool.v1.execute.{}",
+        crate::profile::log_tag(),
+        req.req_id,
+        req.name,
+        req.name
     ));
 
     // The execute core wants a `call_id` for result correlation on the
@@ -408,8 +434,9 @@ pub(crate) fn handle_mcp_call(payload: Value) -> Result<(), SysError> {
     let reply = match execute::dispatch_with_approval(&req.name, &req.req_id, &req.arguments) {
         execute::DispatchOutcome::Result(content, is_error) => {
             log::info(format!(
-            "{}: broker response method=tool.call req_id={} tool={} outcome={} \
-                 elapsed_ms={}", crate::profile::log_tag(),
+                "{}: broker response method=tool.call req_id={} tool={} outcome={} \
+                 elapsed_ms={}",
+                crate::profile::log_tag(),
                 req.req_id,
                 req.name,
                 if is_error { "error" } else { "ok" },
@@ -424,8 +451,9 @@ pub(crate) fn handle_mcp_call(payload: Value) -> Result<(), SysError> {
         }
         execute::DispatchOutcome::ApprovalRequired(required) => {
             log::info(format!(
-            "{}: broker response method=tool.call req_id={} tool={} \
-                 outcome=approval_required elapsed_ms={}", crate::profile::log_tag(),
+                "{}: broker response method=tool.call req_id={} tool={} \
+                 outcome=approval_required elapsed_ms={}",
+                crate::profile::log_tag(),
                 req.req_id,
                 req.name,
                 discovery::wall_ms().saturating_sub(started)
@@ -534,8 +562,9 @@ pub(crate) fn handle_mcp_call(payload: Value) -> Result<(), SysError> {
                 }
             };
             log::info(format!(
-            "{}: broker response method=tool.call req_id={} tool={} outcome={outcome} \
-                 capsule={} elapsed_ms={}", crate::profile::log_tag(),
+                "{}: broker response method=tool.call req_id={} tool={} outcome={outcome} \
+                 capsule={} elapsed_ms={}",
+                crate::profile::log_tag(),
                 req.req_id,
                 req.name,
                 grant.capsule_id,
@@ -588,7 +617,8 @@ fn pretooluse_gate_reply(req: &CallRequest) -> Value {
 
     if let crate::policy::Decision::Deny { reason } = &decision {
         log::info(format!(
-            "{}: PreToolUse policy denied native tool '{tool_name}' (req_id '{}'): {reason}", crate::profile::log_tag(),
+            "{}: PreToolUse policy denied native tool '{tool_name}' (req_id '{}'): {reason}",
+            crate::profile::log_tag(),
             req.req_id
         ));
         // Audit the native-tool denial on the same `astrid.v1.audit.policy_*`
@@ -764,7 +794,10 @@ pub(crate) fn mcp_content(content: Value) -> Value {
 /// the proxy times out on its side if delivery fails.
 fn publish_reply(topic: &str, reply: &Value) {
     if let Err(e) = ipc::publish_json(topic, reply) {
-        log::warn(format!("{}: broker failed to publish {topic}: {e}", crate::profile::log_tag()));
+        log::warn(format!(
+            "{}: broker failed to publish {topic}: {e}",
+            crate::profile::log_tag()
+        ));
     }
 }
 

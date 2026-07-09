@@ -115,10 +115,9 @@ impl Sessions {
         &self,
         f: impl FnOnce(&mut HashMap<String, RuntimeSession>) -> R,
     ) -> Result<R, SysError> {
-        let mut guard = self
-            .inner
-            .lock()
-            .map_err(|_| SysError::ApiError("claude-runner session registry lock poisoned".into()))?;
+        let mut guard = self.inner.lock().map_err(|_| {
+            SysError::ApiError("claude-runner session registry lock poisoned".into())
+        })?;
         Ok(f(&mut guard))
     }
 
@@ -134,10 +133,9 @@ impl Sessions {
     /// True the first time it is called after capsule load; false thereafter.
     /// Used to gate the orphan-record recovery scan to a single execution.
     pub(crate) fn take_reload_recovered_flag(&self) -> Result<bool, SysError> {
-        let mut guard = self
-            .reload_recovered
-            .lock()
-            .map_err(|_| SysError::ApiError("claude-runner reload-recovery flag lock poisoned".into()))?;
+        let mut guard = self.reload_recovered.lock().map_err(|_| {
+            SysError::ApiError("claude-runner reload-recovery flag lock poisoned".into())
+        })?;
         if *guard {
             Ok(false)
         } else {

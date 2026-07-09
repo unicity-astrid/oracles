@@ -424,7 +424,9 @@ impl ClaudeRunner {
         let home_path = resolved_home;
         let prompt =
             identity::fetch_prompt(&principal_id, &session_id, &home_path).unwrap_or_else(|e| {
-                log::warn(format!("claude-runner: identity fetch errored: {e}, using fallback"));
+                log::warn(format!(
+                    "claude-runner: identity fetch errored: {e}, using fallback"
+                ));
                 "You are an agent running inside Astrid OS. Tools are exposed via mcp__astrid__*."
                     .into()
             });

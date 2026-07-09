@@ -418,7 +418,9 @@ pub(crate) fn validate_and_route(messages: Vec<ipc::Message>) -> Result<(), SysE
         // See [`build_canonical_body`] for the field-by-field contract.
         let body = build_canonical_body(&envelope);
         if let Err(e) = ipc::publish_json(canonical, &body) {
-            log::warn(format!("claude-runner: republish to '{canonical}' failed: {e:?}"));
+            log::warn(format!(
+                "claude-runner: republish to '{canonical}' failed: {e:?}"
+            ));
         }
     }
     Ok(())

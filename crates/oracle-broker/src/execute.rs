@@ -142,7 +142,10 @@ pub(crate) fn dispatch_with_approval(
     arguments: &Value,
 ) -> DispatchOutcome {
     if !is_valid_tool_name(tool_name) {
-        return DispatchOutcome::Failed(format!("{}: invalid tool name '{tool_name}'", crate::profile::log_tag()));
+        return DispatchOutcome::Failed(format!(
+            "{}: invalid tool name '{tool_name}'",
+            crate::profile::log_tag()
+        ));
     }
 
     let route_topic = format!("tool.v1.execute.{tool_name}");
@@ -156,14 +159,18 @@ pub(crate) fn dispatch_with_approval(
     let result_sub = match ipc::subscribe(&result_topic) {
         Ok(s) => s,
         Err(e) => {
-            return DispatchOutcome::Failed(format!("{}: failed to subscribe to {result_topic}: {e}", crate::profile::log_tag()));
+            return DispatchOutcome::Failed(format!(
+                "{}: failed to subscribe to {result_topic}: {e}",
+                crate::profile::log_tag()
+            ));
         }
     };
     let approval_sub = match ipc::subscribe(approval::APPROVAL_REQUEST_TOPIC) {
         Ok(s) => s,
         Err(e) => {
             return DispatchOutcome::Failed(format!(
-            "{}: failed to subscribe to {}: {e}", crate::profile::log_tag(),
+                "{}: failed to subscribe to {}: {e}",
+                crate::profile::log_tag(),
                 approval::APPROVAL_REQUEST_TOPIC
             ));
         }
@@ -176,7 +183,10 @@ pub(crate) fn dispatch_with_approval(
         "arguments": arguments,
     });
     if let Err(e) = ipc::publish_json(&route_topic, &forward) {
-        return DispatchOutcome::Failed(format!("{}: failed to publish {route_topic}: {e}", crate::profile::log_tag()));
+        return DispatchOutcome::Failed(format!(
+            "{}: failed to publish {route_topic}: {e}",
+            crate::profile::log_tag()
+        ));
     }
 
     // Drain both subscriptions in lockstep slices until a matching result
@@ -239,7 +249,8 @@ pub(crate) fn dispatch_with_approval(
     }
 
     DispatchOutcome::Failed(format!(
-            "{}: tool '{tool_name}' did not respond within {}s", crate::profile::log_tag(),
+        "{}: tool '{tool_name}' did not respond within {}s",
+        crate::profile::log_tag(),
         EXECUTE_TIMEOUT_MS / 1_000
     ))
 }
@@ -360,12 +371,18 @@ fn ingress_pending_key(source_id: &str) -> Option<String> {
 /// respond, so no TTL/sweep is needed.
 pub(crate) fn mark_ingress_pending(source_id: &str) {
     let Some(key) = ingress_pending_key(source_id) else {
-        log::warn(format!("{}: empty source_id; not marking an ingress consent prompt as pending", crate::profile::log_tag()));
+        log::warn(format!(
+            "{}: empty source_id; not marking an ingress consent prompt as pending",
+            crate::profile::log_tag()
+        ));
         return;
     };
     if let Err(e) = kv::set_bytes(&key, b"1") {
-        log::warn(format!("{}: failed to mark ingress consent prompt pending for source_id \
-             '{source_id}': {e}", crate::profile::log_tag()));
+        log::warn(format!(
+            "{}: failed to mark ingress consent prompt pending for source_id \
+             '{source_id}': {e}",
+            crate::profile::log_tag()
+        ));
     }
 }
 
@@ -390,15 +407,21 @@ pub(crate) fn take_ingress_pending(source_id: &str) -> bool {
     match kv::get_bytes_opt(&key) {
         Ok(Some(_)) => {
             if let Err(e) = kv::delete(&key) {
-                log::warn(format!("{}: failed to clear ingress pending marker for source_id \
-                     '{source_id}': {e}", crate::profile::log_tag()));
+                log::warn(format!(
+                    "{}: failed to clear ingress pending marker for source_id \
+                     '{source_id}': {e}",
+                    crate::profile::log_tag()
+                ));
             }
             true
         }
         Ok(None) => false,
         Err(e) => {
-            log::warn(format!("{}: ingress pending read error for source_id '{source_id}', \
-                 failing closed: {e}", crate::profile::log_tag()));
+            log::warn(format!(
+                "{}: ingress pending read error for source_id '{source_id}', \
+                 failing closed: {e}",
+                crate::profile::log_tag()
+            ));
             false
         }
     }
@@ -438,13 +461,19 @@ fn grant_pending_key(_principal: &str, capsule_id: &str) -> Option<String> {
 /// [`crate::approval::handle_mcp_grant_respond`].
 pub(crate) fn mark_grant_pending(principal: &str, capsule_id: &str) {
     let Some(key) = grant_pending_key(principal, capsule_id) else {
-        log::warn(format!("{}: empty capsule_id; not marking a grant consent prompt as pending", crate::profile::log_tag()));
+        log::warn(format!(
+            "{}: empty capsule_id; not marking a grant consent prompt as pending",
+            crate::profile::log_tag()
+        ));
         return;
     };
     let stamp = crate::discovery::wall_ms().to_string();
     if let Err(e) = kv::set_bytes(&key, stamp.as_bytes()) {
-        log::warn(format!("{}: failed to mark grant consent prompt pending for capsule_id \
-             '{capsule_id}': {e}", crate::profile::log_tag()));
+        log::warn(format!(
+            "{}: failed to mark grant consent prompt pending for capsule_id \
+             '{capsule_id}': {e}",
+            crate::profile::log_tag()
+        ));
     }
 }
 
@@ -516,8 +545,11 @@ pub(crate) fn grant_pending(principal: &str, capsule_id: &str) -> bool {
         }
         Ok(None) => false,
         Err(e) => {
-            log::warn(format!("{}: grant pending read error for capsule_id '{capsule_id}', \
-                 surfacing a fresh prompt: {e}", crate::profile::log_tag()));
+            log::warn(format!(
+                "{}: grant pending read error for capsule_id '{capsule_id}', \
+                 surfacing a fresh prompt: {e}",
+                crate::profile::log_tag()
+            ));
             false
         }
     }
@@ -543,15 +575,21 @@ pub(crate) fn take_grant_pending(principal: &str, capsule_id: &str) -> bool {
     match kv::get_bytes_opt(&key) {
         Ok(Some(_)) => {
             if let Err(e) = kv::delete(&key) {
-                log::warn(format!("{}: failed to clear grant pending marker for capsule_id \
-                     '{capsule_id}': {e}", crate::profile::log_tag()));
+                log::warn(format!(
+                    "{}: failed to clear grant pending marker for capsule_id \
+                     '{capsule_id}': {e}",
+                    crate::profile::log_tag()
+                ));
             }
             true
         }
         Ok(None) => false,
         Err(e) => {
-            log::warn(format!("{}: grant pending read error for capsule_id '{capsule_id}', \
-                 failing closed: {e}", crate::profile::log_tag()));
+            log::warn(format!(
+                "{}: grant pending read error for capsule_id '{capsule_id}', \
+                 failing closed: {e}",
+                crate::profile::log_tag()
+            ));
             false
         }
     }

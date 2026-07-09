@@ -38,10 +38,9 @@ pub fn install_astrid() {
 #[inline]
 #[must_use]
 pub(crate) fn identity() -> &'static OracleIdentity {
-    IDENTITY
-        .get()
-        .copied()
-        .expect("oracle-broker: OracleIdentity not installed; call oracle_broker::install_astrid first")
+    IDENTITY.get().copied().expect(
+        "oracle-broker: OracleIdentity not installed; call oracle_broker::install_astrid first",
+    )
 }
 
 /// Log-line tag (`astrid-mcp`).

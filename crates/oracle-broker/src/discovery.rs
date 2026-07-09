@@ -211,12 +211,18 @@ pub(crate) fn on_capsules_loaded(payload: serde_json::Value) {
             // separately re-fetches `tools/list` on this same signal).
             let count = descriptors.len();
             let snapshot = cache::replace(descriptors).as_vec();
-            log::info(format!("{}: tool cache rebuilt from static capsule metadata ({count} tools); describe fan-out skipped", crate::profile::log_tag()));
+            log::info(format!(
+                "{}: tool cache rebuilt from static capsule metadata ({count} tools); describe fan-out skipped",
+                crate::profile::log_tag()
+            ));
             publish_tools_list(&snapshot);
         }
         None => {
             // At least one uncaptured surface — discover at runtime.
-            log::info(format!("{}: capsule-set change includes an uncaptured tool surface; cache invalidated for fan-out rediscovery", crate::profile::log_tag()));
+            log::info(format!(
+                "{}: capsule-set change includes an uncaptured tool surface; cache invalidated for fan-out rediscovery",
+                crate::profile::log_tag()
+            ));
             cache::invalidate();
         }
     }
@@ -278,17 +284,26 @@ fn discover(req_id: &str) -> Vec<McpToolDescriptor> {
     let sub = match ipc::subscribe(DESCRIBE_RESPONSE_PATTERN) {
         Ok(s) => s,
         Err(e) => {
-            log::warn(format!("{}: broker fan-out subscribe failed req_id={req_id} \
-                 topic={DESCRIBE_RESPONSE_PATTERN}: {e}", crate::profile::log_tag()));
+            log::warn(format!(
+                "{}: broker fan-out subscribe failed req_id={req_id} \
+                 topic={DESCRIBE_RESPONSE_PATTERN}: {e}",
+                crate::profile::log_tag()
+            ));
             return Vec::new();
         }
     };
 
-    log::info(format!("{}: broker fan-out start req_id={req_id} deadline_ms={DISCOVERY_TIMEOUT_MS}", crate::profile::log_tag()));
+    log::info(format!(
+        "{}: broker fan-out start req_id={req_id} deadline_ms={DISCOVERY_TIMEOUT_MS}",
+        crate::profile::log_tag()
+    ));
 
     if let Err(e) = ipc::publish(DESCRIBE_REQUEST_TOPIC, "{}") {
-        log::warn(format!("{}: broker fan-out publish failed req_id={req_id} \
-             topic={DESCRIBE_REQUEST_TOPIC}: {e}", crate::profile::log_tag()));
+        log::warn(format!(
+            "{}: broker fan-out publish failed req_id={req_id} \
+             topic={DESCRIBE_REQUEST_TOPIC}: {e}",
+            crate::profile::log_tag()
+        ));
         return Vec::new();
     }
 
@@ -316,8 +331,9 @@ fn discover(req_id: &str) -> Vec<McpToolDescriptor> {
                     let tools = parse_describe_response(&value);
                     responders.insert(msg.source_id.clone());
                     log::debug(format!(
-            "{}: broker fan-out collected req_id={req_id} \
-                         responder={} tool_count={}", crate::profile::log_tag(),
+                        "{}: broker fan-out collected req_id={req_id} \
+                         responder={} tool_count={}",
+                        crate::profile::log_tag(),
                         msg.source_id,
                         tools.len()
                     ));
@@ -368,14 +384,16 @@ fn discover(req_id: &str) -> Vec<McpToolDescriptor> {
     if dropped > 0 || lagged > 0 || (timed_out && !seen_any) {
         log::warn(format!(
             "{}: broker fan-out incomplete req_id={req_id} responders={} tools={} \
-             dropped={dropped} lagged={lagged} timed_out={timed_out} elapsed_ms={elapsed}", crate::profile::log_tag(),
+             dropped={dropped} lagged={lagged} timed_out={timed_out} elapsed_ms={elapsed}",
+            crate::profile::log_tag(),
             responders.len(),
             acc.len()
         ));
     } else {
         log::info(format!(
             "{}: broker fan-out complete req_id={req_id} responders={} tools={} \
-             elapsed_ms={elapsed}", crate::profile::log_tag(),
+             elapsed_ms={elapsed}",
+            crate::profile::log_tag(),
             responders.len(),
             acc.len()
         ));
@@ -495,7 +513,10 @@ fn publish_tools_list(descriptors: &[McpToolDescriptor]) {
 
     if let Err(e) = ipc::publish_json(tools_list_topic(), &mcp_shaped) {
         let topic = tools_list_topic();
-        log::warn(format!("{}: failed to publish {topic}: {e}", crate::profile::log_tag()));
+        log::warn(format!(
+            "{}: failed to publish {topic}: {e}",
+            crate::profile::log_tag()
+        ));
     }
 }
 

@@ -347,20 +347,27 @@ pub(crate) fn handle_mcp_approval(payload: Value) -> Result<(), SysError> {
             // No recoverable req_id — there is no channel to reply on, and no
             // request_id to deny. The host's approval times out (60 s) on
             // its own schedule. Log and drop.
-            log::warn(format!("{}: broker approval.respond: malformed payload: {e}", crate::profile::log_tag()));
+            log::warn(format!(
+                "{}: broker approval.respond: malformed payload: {e}",
+                crate::profile::log_tag()
+            ));
             return Ok(());
         }
     };
 
     log::info(format!(
-            "{}: broker ingress method=approval.respond req_id={} request_id={} tool={}", crate::profile::log_tag(),
-        req.req_id, req.request_id, req.tool_name
+        "{}: broker ingress method=approval.respond req_id={} request_id={} tool={}",
+        crate::profile::log_tag(),
+        req.req_id,
+        req.request_id,
+        req.tool_name
     ));
 
     let reply_topic = crate::broker::reply_topic(&req.req_id);
     let Some(response_topic) = response_topic(&req.request_id) else {
         log::warn(format!(
-            "{}: broker approval.respond: rejecting unroutable request_id '{}'", crate::profile::log_tag(),
+            "{}: broker approval.respond: rejecting unroutable request_id '{}'",
+            crate::profile::log_tag(),
             req.request_id
         ));
         // Reply to the shim if we at least have a clean req_id so it doesn't
@@ -381,7 +388,8 @@ pub(crate) fn handle_mcp_approval(payload: Value) -> Result<(), SysError> {
         Ok(ctx) => ctx.source_id,
         Err(e) => {
             log::warn(format!(
-            "{}: broker approval.respond: no caller context, denying request_id '{}': {e}", crate::profile::log_tag(),
+                "{}: broker approval.respond: no caller context, denying request_id '{}': {e}",
+                crate::profile::log_tag(),
                 req.request_id
             ));
             resolve_with_decision(&req, &response_topic, DENY, None);
@@ -391,7 +399,8 @@ pub(crate) fn handle_mcp_approval(payload: Value) -> Result<(), SysError> {
     if !crate::execute::is_ingress_trusted(&source_id) {
         log::warn(format!(
             "{}: broker approval.respond: untrusted ingress source_id '{source_id}', \
-             denying request_id '{}'", crate::profile::log_tag(),
+             denying request_id '{}'",
+            crate::profile::log_tag(),
             req.request_id
         ));
         resolve_with_decision(&req, &response_topic, DENY, None);
@@ -484,14 +493,19 @@ pub(crate) fn handle_mcp_ingress_respond(payload: Value) -> Result<(), SysError>
         Err(e) => {
             // No recoverable req_id — there is no channel to ack on. Log
             // and drop; the shim times out its own request.
-            log::warn(format!("{}: broker ingress.respond: malformed payload: {e}", crate::profile::log_tag()));
+            log::warn(format!(
+                "{}: broker ingress.respond: malformed payload: {e}",
+                crate::profile::log_tag()
+            ));
             return Ok(());
         }
     };
 
     log::info(format!(
-            "{}: broker ingress method=ingress.respond req_id={} accept={}", crate::profile::log_tag(),
-        req.req_id, req.accept
+        "{}: broker ingress method=ingress.respond req_id={} accept={}",
+        crate::profile::log_tag(),
+        req.req_id,
+        req.accept
     ));
 
     let reply_topic = crate::broker::reply_topic(&req.req_id);
@@ -500,7 +514,10 @@ pub(crate) fn handle_mcp_ingress_respond(payload: Value) -> Result<(), SysError>
     let source_id = match runtime::caller() {
         Ok(ctx) => ctx.source_id,
         Err(e) => {
-            log::warn(format!("{}: broker ingress.respond: no caller context, recording no trust: {e}", crate::profile::log_tag()));
+            log::warn(format!(
+                "{}: broker ingress.respond: no caller context, recording no trust: {e}",
+                crate::profile::log_tag()
+            ));
             if let Some(reply) = &reply_topic {
                 ingress_ack(reply, &req.req_id, false);
             }
@@ -519,8 +536,11 @@ pub(crate) fn handle_mcp_ingress_respond(payload: Value) -> Result<(), SysError>
             // Unsolicited or replayed accept: no consent prompt is outstanding
             // for this ingress, so the broker never asked. Refuse to record
             // trust and ack as not-granted — the shim will not re-send.
-            log::warn(format!("{}: broker ingress.respond: accept with no outstanding prompt for \
-                 source_id '{source_id}'; recording no trust", crate::profile::log_tag()));
+            log::warn(format!(
+                "{}: broker ingress.respond: accept with no outstanding prompt for \
+                 source_id '{source_id}'; recording no trust",
+                crate::profile::log_tag()
+            ));
             if let Some(reply) = &reply_topic {
                 ingress_ack(reply, &req.req_id, false);
             }
@@ -529,8 +549,11 @@ pub(crate) fn handle_mcp_ingress_respond(payload: Value) -> Result<(), SysError>
         match crate::execute::ingress_trust_key(&source_id) {
             Some(key) => {
                 if let Err(e) = kv::set_bytes(&key, b"1") {
-                    log::warn(format!("{}: broker ingress.respond: failed to record trust for \
-                         source_id '{source_id}': {e}", crate::profile::log_tag()));
+                    log::warn(format!(
+                        "{}: broker ingress.respond: failed to record trust for \
+                         source_id '{source_id}': {e}",
+                        crate::profile::log_tag()
+                    ));
                     // Could not persist — ack as not-granted so the shim does
                     // not falsely believe trust was recorded.
                     if let Some(reply) = &reply_topic {
@@ -538,8 +561,11 @@ pub(crate) fn handle_mcp_ingress_respond(payload: Value) -> Result<(), SysError>
                     }
                     return Ok(());
                 }
-                log::info(format!("{}: broker ingress.respond: recorded trust for ingress source_id \
-                     '{source_id}'", crate::profile::log_tag()));
+                log::info(format!(
+                    "{}: broker ingress.respond: recorded trust for ingress source_id \
+                     '{source_id}'",
+                    crate::profile::log_tag()
+                ));
                 // Best-effort audit on the same `astrid.v1.audit.*` family the
                 // policy gate uses. source_id is kernel-stamped, not a
                 // reflected argument.
@@ -554,15 +580,21 @@ pub(crate) fn handle_mcp_ingress_respond(payload: Value) -> Result<(), SysError>
             None => {
                 // Empty / unattributed caller — refuse to record a routable
                 // trust key. Ack as not-granted.
-                log::warn(format!("{}: broker ingress.respond: empty caller source_id; no trust recorded", crate::profile::log_tag()));
+                log::warn(format!(
+                    "{}: broker ingress.respond: empty caller source_id; no trust recorded",
+                    crate::profile::log_tag()
+                ));
                 if let Some(reply) = &reply_topic {
                     ingress_ack(reply, &req.req_id, false);
                 }
             }
         }
     } else {
-        log::info(format!("{}: broker ingress.respond: user declined trust for ingress source_id \
-             '{source_id}'", crate::profile::log_tag()));
+        log::info(format!(
+            "{}: broker ingress.respond: user declined trust for ingress source_id \
+             '{source_id}'",
+            crate::profile::log_tag()
+        ));
         if let Some(reply) = &reply_topic {
             ingress_ack(reply, &req.req_id, false);
         }
@@ -582,7 +614,10 @@ fn ingress_ack(reply_topic: &str, req_id: &str, granted: bool) {
         "granted": granted,
     });
     if let Err(e) = ipc::publish_json(reply_topic, &reply) {
-        log::warn(format!("{}: broker ingress.respond: failed to ack {reply_topic}: {e}", crate::profile::log_tag()));
+        log::warn(format!(
+            "{}: broker ingress.respond: failed to ack {reply_topic}: {e}",
+            crate::profile::log_tag()
+        ));
     }
 }
 
@@ -641,20 +676,27 @@ pub(crate) fn handle_mcp_grant_respond(payload: Value) -> Result<(), SysError> {
             // to deny. The kernel grant gate retires on its own schedule, and a
             // pending marker self-heals at GRANT_PENDING_TTL_MS, so dropping
             // here cannot wedge the pair. Log and drop.
-            log::warn(format!("{}: broker grant.respond: malformed payload: {e}", crate::profile::log_tag()));
+            log::warn(format!(
+                "{}: broker grant.respond: malformed payload: {e}",
+                crate::profile::log_tag()
+            ));
             return Ok(());
         }
     };
 
     log::info(format!(
-            "{}: broker ingress method=grant.respond req_id={} request_id={} capsule_id={}", crate::profile::log_tag(),
-        req.req_id, req.request_id, req.capsule_id
+        "{}: broker ingress method=grant.respond req_id={} request_id={} capsule_id={}",
+        crate::profile::log_tag(),
+        req.req_id,
+        req.request_id,
+        req.capsule_id
     ));
 
     let reply_topic = crate::broker::reply_topic(&req.req_id);
     let Some(response_topic) = response_topic(&req.request_id) else {
         log::warn(format!(
-            "{}: broker grant.respond: rejecting unroutable request_id '{}'", crate::profile::log_tag(),
+            "{}: broker grant.respond: rejecting unroutable request_id '{}'",
+            crate::profile::log_tag(),
             req.request_id
         ));
         // Clear any dedup marker so the next ungranted call can re-prompt — the
@@ -678,7 +720,8 @@ pub(crate) fn handle_mcp_grant_respond(payload: Value) -> Result<(), SysError> {
         Ok(ctx) => ctx.source_id,
         Err(e) => {
             log::warn(format!(
-            "{}: broker grant.respond: no caller context, denying request_id '{}': {e}", crate::profile::log_tag(),
+                "{}: broker grant.respond: no caller context, denying request_id '{}': {e}",
+                crate::profile::log_tag(),
                 req.request_id
             ));
             publish_decision(&response_topic, &req.request_id, DENY, None);
@@ -692,7 +735,8 @@ pub(crate) fn handle_mcp_grant_respond(payload: Value) -> Result<(), SysError> {
     if !crate::execute::is_ingress_trusted(&source_id) {
         log::warn(format!(
             "{}: broker grant.respond: untrusted ingress source_id '{source_id}', \
-             denying request_id '{}'", crate::profile::log_tag(),
+             denying request_id '{}'",
+            crate::profile::log_tag(),
             req.request_id
         ));
         publish_decision(&response_topic, &req.request_id, DENY, None);
@@ -747,7 +791,8 @@ pub(crate) fn handle_mcp_grant_respond(payload: Value) -> Result<(), SysError> {
     } else {
         log::warn(format!(
             "{}: broker grant.respond: decision published but req_id '{}' unroutable; \
-             no ack delivered", crate::profile::log_tag(),
+             no ack delivered",
+            crate::profile::log_tag(),
             req.req_id
         ));
     }
@@ -794,7 +839,10 @@ fn grant_ack(reply_topic: &str, req_id: &str, granted: bool) {
         "granted": granted,
     });
     if let Err(e) = ipc::publish_json(reply_topic, &reply) {
-        log::warn(format!("{}: broker grant.respond: failed to ack {reply_topic}: {e}", crate::profile::log_tag()));
+        log::warn(format!(
+            "{}: broker grant.respond: failed to ack {reply_topic}: {e}",
+            crate::profile::log_tag()
+        ));
     }
 }
 
@@ -825,8 +873,10 @@ fn resolve_with_decision(
     if !crate::execute::is_valid_tool_name(&req.tool_name) {
         log::warn(format!(
             "{}: broker approval.respond: invalid tool_name '{}' for request_id '{}'; \
-             publishing decision without result drain", crate::profile::log_tag(),
-            req.tool_name, req.request_id
+             publishing decision without result drain",
+            crate::profile::log_tag(),
+            req.tool_name,
+            req.request_id
         ));
         // Still unblock the host so the tool retires, then surface an error.
         publish_decision(response_topic, &req.request_id, decision, reason);
@@ -845,7 +895,10 @@ fn resolve_with_decision(
     let result_sub = match ipc::subscribe(&result_topic) {
         Ok(s) => Some(s),
         Err(e) => {
-            log::warn(format!("{}: broker approval.respond: failed to subscribe {result_topic}: {e}", crate::profile::log_tag()));
+            log::warn(format!(
+                "{}: broker approval.respond: failed to subscribe {result_topic}: {e}",
+                crate::profile::log_tag()
+            ));
             None
         }
     };
@@ -858,7 +911,8 @@ fn resolve_with_decision(
         // request; nothing more we can do.
         log::warn(format!(
             "{}: broker approval.respond: decision published but req_id '{}' unroutable; \
-             no terminal reply delivered", crate::profile::log_tag(),
+             no terminal reply delivered",
+            crate::profile::log_tag(),
             req.req_id
         ));
         return;
@@ -913,7 +967,10 @@ fn deliver_result(reply_topic: &str, req_id: &str, content: Value, is_error: boo
         "isError": is_error,
     });
     if let Err(e) = ipc::publish_json(reply_topic, &reply) {
-        log::warn(format!("{}: broker approval.respond: failed to deliver result {reply_topic}: {e}", crate::profile::log_tag()));
+        log::warn(format!(
+            "{}: broker approval.respond: failed to deliver result {reply_topic}: {e}",
+            crate::profile::log_tag()
+        ));
     }
 }
 
@@ -966,7 +1023,10 @@ fn publish_decision(topic: &str, request_id: &str, decision: &str, reason: Optio
         }
     }
     if let Err(e) = ipc::publish_json(topic, &envelope) {
-        log::warn(format!("{}: failed to publish approval decision {topic}: {e}", crate::profile::log_tag()));
+        log::warn(format!(
+            "{}: failed to publish approval decision {topic}: {e}",
+            crate::profile::log_tag()
+        ));
     }
 }
 
@@ -988,8 +1048,11 @@ fn publish_decision(topic: &str, request_id: &str, decision: &str, reason: Optio
 /// response-never-carries-a-target invariant is untouched.
 pub(crate) fn publish_grant_auto_decision(request_id: &str, approve: bool) -> bool {
     let Some(topic) = response_topic(request_id) else {
-        log::warn(format!("{}: broker grant auto-decision: unroutable request_id '{request_id}'; \
-             not publishing (kernel awaiter will time out on its own)", crate::profile::log_tag()));
+        log::warn(format!(
+            "{}: broker grant auto-decision: unroutable request_id '{request_id}'; \
+             not publishing (kernel awaiter will time out on its own)",
+            crate::profile::log_tag()
+        ));
         return false;
     };
     let decision = if approve { APPROVE } else { DENY };

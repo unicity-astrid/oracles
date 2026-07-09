@@ -2,9 +2,7 @@
 //!
 //! Every host shares this. Host-specific data lives on [`crate::HostProfile`].
 
-use crate::newtypes::{
-    AuditTopicPrefix, CapsuleName, LogTag, McpNamespace, McpToolPrefix, Topic,
-};
+use crate::newtypes::{AuditTopicPrefix, CapsuleName, LogTag, McpNamespace, McpToolPrefix, Topic};
 
 /// Astrid-side wire identity for the shared oracle broker.
 ///

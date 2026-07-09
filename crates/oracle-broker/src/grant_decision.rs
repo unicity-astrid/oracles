@@ -156,11 +156,17 @@ pub(crate) fn respond_decision_to_record(granted: bool) -> Option<GrantDecision>
 /// prompting). An empty `capsule_id` records nothing.
 pub(crate) fn record_grant_decision(capsule_id: &str, decision: GrantDecision) {
     let Some(key) = grant_decision_key(capsule_id) else {
-        log::warn(format!("{}: empty capsule_id; not recording a grant decision", crate::profile::log_tag()));
+        log::warn(format!(
+            "{}: empty capsule_id; not recording a grant decision",
+            crate::profile::log_tag()
+        ));
         return;
     };
     if let Err(e) = kv::set_bytes(&key, decision.as_kv_value().as_bytes()) {
-        log::warn(format!("{}: failed to record grant decision for capsule_id '{capsule_id}': {e}", crate::profile::log_tag()));
+        log::warn(format!(
+            "{}: failed to record grant decision for capsule_id '{capsule_id}': {e}",
+            crate::profile::log_tag()
+        ));
     }
 }
 
@@ -177,8 +183,11 @@ pub(crate) fn recorded_grant_decision(capsule_id: &str) -> Option<GrantDecision>
         Ok(Some(bytes)) => parse_grant_decision(&bytes),
         Ok(None) => None,
         Err(e) => {
-            log::warn(format!("{}: grant decision read error for capsule_id '{capsule_id}', \
-                 will prompt: {e}", crate::profile::log_tag()));
+            log::warn(format!(
+                "{}: grant decision read error for capsule_id '{capsule_id}', \
+                 will prompt: {e}",
+                crate::profile::log_tag()
+            ));
             None
         }
     }
@@ -220,7 +229,8 @@ pub(crate) fn grant_dedup_reply(req_id: &str) -> Value {
         req_id,
         format!(
             "{}: a consent prompt for this capsule is open in your client. Answer \
-             it and retry; if it never appeared, retry after {} and it will be re-asked.", crate::profile::log_tag(),
+             it and retry; if it never appeared, retry after {} and it will be re-asked.",
+            crate::profile::log_tag(),
             ttl_hint(crate::execute::GRANT_PENDING_TTL_MS)
         ),
         false,
@@ -252,8 +262,11 @@ fn ttl_hint(ttl_ms: u64) -> String {
 pub(crate) fn grant_auto_approve_reply(req_id: &str, capsule_id: &str) -> Value {
     grant_reply(
         req_id,
-        format!("{}: session access to capsule '{capsule_id}' is already approved for \
-             this identity; the grant has been applied. Retry the tool call.", crate::profile::log_tag()),
+        format!(
+            "{}: session access to capsule '{capsule_id}' is already approved for \
+             this identity; the grant has been applied. Retry the tool call.",
+            crate::profile::log_tag()
+        ),
         false,
     )
 }
@@ -269,9 +282,12 @@ pub(crate) fn grant_auto_deny_reply(req_id: &str, capsule_id: &str, principal: &
     };
     grant_reply(
         req_id,
-        format!("{}: session access to capsule '{capsule_id}' was denied for this \
+        format!(
+            "{}: session access to capsule '{capsule_id}' was denied for this \
              identity. An operator can allow it with: astrid agent modify {who} \
-             --add-capsule {capsule_id} (or later revoke a grant with --remove-capsule).", crate::profile::log_tag()),
+             --add-capsule {capsule_id} (or later revoke a grant with --remove-capsule).",
+            crate::profile::log_tag()
+        ),
         true,
     )
 }
@@ -284,9 +300,12 @@ pub(crate) fn grant_auto_deny_reply(req_id: &str, capsule_id: &str, principal: &
 pub(crate) fn grant_unroutable_reply(req_id: &str, capsule_id: &str) -> Value {
     grant_reply(
         req_id,
-        format!("{}: could not apply the recorded grant for capsule '{capsule_id}' \
+        format!(
+            "{}: could not apply the recorded grant for capsule '{capsule_id}' \
              (unroutable kernel request id). Re-grant it, or an operator can run: \
-             astrid agent modify <principal> --add-capsule {capsule_id}.", crate::profile::log_tag()),
+             astrid agent modify <principal> --add-capsule {capsule_id}.",
+            crate::profile::log_tag()
+        ),
         true,
     )
 }

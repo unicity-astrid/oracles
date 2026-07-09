@@ -209,7 +209,9 @@ pub(crate) fn handle_identity_refresh(
     let result: SaveIdentityResult = match serde_json::from_str(&msg.payload) {
         Ok(r) => r,
         Err(e) => {
-            log::warn(format!("claude-runner: save_identity payload parse failed: {e}"));
+            log::warn(format!(
+                "claude-runner: save_identity payload parse failed: {e}"
+            ));
             return Ok(());
         }
     };

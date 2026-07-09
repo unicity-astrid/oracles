@@ -80,7 +80,9 @@ fn drive_session(sessions: &Sessions, session_id: &str) -> Result<(), SysError> 
     let logs = match prep.process.read_logs() {
         Ok(l) => l,
         Err(e) => {
-            log::warn(format!("claude-runner: read_logs failed for {session_id}: {e}"));
+            log::warn(format!(
+                "claude-runner: read_logs failed for {session_id}: {e}"
+            ));
             return Ok(());
         }
     };

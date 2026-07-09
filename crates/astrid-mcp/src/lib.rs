@@ -6,8 +6,8 @@
 #![deny(unsafe_code)]
 #![deny(clippy::all)]
 
-use oracle_broker::handlers;
 use astrid_sdk::prelude::*;
+use oracle_broker::handlers;
 
 /// Astrid MCP broker capsule.
 #[derive(Default)]

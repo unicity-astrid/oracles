@@ -261,7 +261,10 @@ pub(crate) fn load_rules() -> Vec<Rule> {
         Ok(_) => return Vec::new(),
         Err(e) => {
             audit_load_failure("env_read_error");
-            log::warn(format!("{}: policy_rules env read failed: {e:?}", crate::profile::log_tag()));
+            log::warn(format!(
+                "{}: policy_rules env read failed: {e:?}",
+                crate::profile::log_tag()
+            ));
             return Vec::new();
         }
     };
@@ -270,14 +273,20 @@ pub(crate) fn load_rules() -> Vec<Rule> {
         Ok(rules) => rules,
         Err(e) => {
             audit_load_failure("parse_error");
-            log::warn(format!("{}: policy_rules failed to parse: {e}", crate::profile::log_tag()));
+            log::warn(format!(
+                "{}: policy_rules failed to parse: {e}",
+                crate::profile::log_tag()
+            ));
             return Vec::new();
         }
     };
 
     if let Err(reason) = validate(&parsed) {
         audit_load_failure(reason);
-        log::warn(format!("{}: policy_rules rejected ({reason}); policy NOT in force", crate::profile::log_tag()));
+        log::warn(format!(
+            "{}: policy_rules rejected ({reason}); policy NOT in force",
+            crate::profile::log_tag()
+        ));
         return Vec::new();
     }
     parsed

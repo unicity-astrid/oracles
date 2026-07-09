@@ -120,9 +120,7 @@ pub fn run_install<P: HostProvisioner>(
     let key = marker_key(&topics, principal);
     let home = P::home_path(ctx);
 
-    if !force
-        && let Some(marker) = kv::get_json_opt::<InstallMarker>(&key)?
-    {
+    if !force && let Some(marker) = kv::get_json_opt::<InstallMarker>(&key)? {
         if marker.artifact_version >= P::ARTIFACT_VERSION {
             return Ok(true);
         }

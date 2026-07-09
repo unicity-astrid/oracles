@@ -23,7 +23,7 @@ pub mod install;
 pub mod mode;
 pub mod topics;
 
-pub use ids::{PrincipalId, SessionId, MAX_ID_LEN};
+pub use ids::{MAX_ID_LEN, PrincipalId, SessionId};
 pub use install::{
     HostProvisioner, InstallComplete, InstallMarker, InstallRequest, InstallStatus, RelinkRequest,
     publish_complete, publish_status, run_install, run_relink,

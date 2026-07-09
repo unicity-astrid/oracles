@@ -56,10 +56,7 @@ fn temp_sibling(path: &str) -> Result<String, SysError> {
     if basename.is_empty() {
         return Err(SysError::ApiError(format!("invalid target path: '{path}'")));
     }
-    Ok(format!(
-        "{parent}/.{basename}.tmp.{}",
-        random_hex_suffix()?
-    ))
+    Ok(format!("{parent}/.{basename}.tmp.{}", random_hex_suffix()?))
 }
 
 fn random_hex_suffix() -> Result<String, SysError> {

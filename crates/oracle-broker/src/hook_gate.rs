@@ -77,7 +77,10 @@ pub(crate) fn handle_before_tool_call(payload: Value) -> Result<(), SysError> {
     let event: BeforeToolCallEvent = match serde_json::from_value(payload) {
         Ok(v) => v,
         Err(e) => {
-            log::warn(format!("{}: before_tool_call: malformed event payload: {e}", crate::profile::log_tag()));
+            log::warn(format!(
+                "{}: before_tool_call: malformed event payload: {e}",
+                crate::profile::log_tag()
+            ));
             return Ok(());
         }
     };
@@ -88,7 +91,10 @@ pub(crate) fn handle_before_tool_call(payload: Value) -> Result<(), SysError> {
         return Ok(());
     };
     let Some(reply_topic) = reply_topic(correlation_id) else {
-        log::warn(format!("{}: before_tool_call: rejecting unroutable correlation_id '{correlation_id}'", crate::profile::log_tag()));
+        log::warn(format!(
+            "{}: before_tool_call: rejecting unroutable correlation_id '{correlation_id}'",
+            crate::profile::log_tag()
+        ));
         return Ok(());
     };
 
@@ -102,7 +108,10 @@ pub(crate) fn handle_before_tool_call(payload: Value) -> Result<(), SysError> {
     let reply = verdict(tool_name, &tool_input);
 
     if let Err(e) = ipc::publish_json(&reply_topic, &reply) {
-        log::warn(format!("{}: before_tool_call: failed to reply on {reply_topic}: {e}", crate::profile::log_tag()));
+        log::warn(format!(
+            "{}: before_tool_call: failed to reply on {reply_topic}: {e}",
+            crate::profile::log_tag()
+        ));
     }
     Ok(())
 }
@@ -113,7 +122,10 @@ pub(crate) fn handle_before_tool_call(payload: Value) -> Result<(), SysError> {
 fn verdict(tool_name: &str, tool_input: &Value) -> Value {
     let decision = crate::policy::evaluate(&crate::policy::load_rules(), tool_name, tool_input);
     if let crate::policy::Decision::Deny { reason } = &decision {
-        log::info(format!("{}: before_tool_call denied native tool '{tool_name}': {reason}", crate::profile::log_tag()));
+        log::info(format!(
+            "{}: before_tool_call denied native tool '{tool_name}': {reason}",
+            crate::profile::log_tag()
+        ));
         // Audit on the same `astrid.v1.audit.*` family the other gate uses.
         // Operator rule id only — never reflected arguments (injection).
         let _ = ipc::publish_json(

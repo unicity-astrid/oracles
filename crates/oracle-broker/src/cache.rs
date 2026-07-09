@@ -119,7 +119,10 @@ pub(crate) fn upsert(incoming: Vec<McpToolDescriptor>) -> CacheState {
         state.updated_at_ms = now_ms();
 
         let Ok(new_bytes) = serde_json::to_vec(&state) else {
-            log::warn(format!("{}: failed to serialize tool cache", crate::profile::log_tag()));
+            log::warn(format!(
+                "{}: failed to serialize tool cache",
+                crate::profile::log_tag()
+            ));
             return state;
         };
 
@@ -127,13 +130,19 @@ pub(crate) fn upsert(incoming: Vec<McpToolDescriptor>) -> CacheState {
             Ok(true) => return state,
             Ok(false) => continue, // Lost race — reload and retry.
             Err(e) => {
-                log::warn(format!("{}: tool cache CAS failed: {e}", crate::profile::log_tag()));
+                log::warn(format!(
+                    "{}: tool cache CAS failed: {e}",
+                    crate::profile::log_tag()
+                ));
                 return state;
             }
         }
     }
 
-    log::warn(format!("{}: tool cache CAS exhausted retries", crate::profile::log_tag()));
+    log::warn(format!(
+        "{}: tool cache CAS exhausted retries",
+        crate::profile::log_tag()
+    ));
     load()
 }
 
@@ -160,7 +169,10 @@ pub(crate) fn replace(snapshot: Vec<McpToolDescriptor>) -> CacheState {
 
     let expected = kv::get_bytes_opt(CACHE_KEY).ok().flatten();
     let Ok(new_bytes) = serde_json::to_vec(&state) else {
-        log::warn(format!("{}: failed to serialize tool cache (replace)", crate::profile::log_tag()));
+        log::warn(format!(
+            "{}: failed to serialize tool cache (replace)",
+            crate::profile::log_tag()
+        ));
         return state;
     };
     match kv::cas(CACHE_KEY, expected.as_deref(), &new_bytes) {
@@ -171,7 +183,10 @@ pub(crate) fn replace(snapshot: Vec<McpToolDescriptor>) -> CacheState {
             upsert(snapshot)
         }
         Err(e) => {
-            log::warn(format!("{}: tool cache CAS (replace) failed: {e}", crate::profile::log_tag()));
+            log::warn(format!(
+                "{}: tool cache CAS (replace) failed: {e}",
+                crate::profile::log_tag()
+            ));
             state
         }
     }
@@ -198,11 +213,17 @@ pub(crate) fn replace(snapshot: Vec<McpToolDescriptor>) -> CacheState {
 /// that runs after this invalidation observes the new set.
 pub(crate) fn invalidate() {
     let Ok(bytes) = serde_json::to_vec(&CacheState::default()) else {
-        log::warn(format!("{}: failed to serialize empty tool cache (invalidate)", crate::profile::log_tag()));
+        log::warn(format!(
+            "{}: failed to serialize empty tool cache (invalidate)",
+            crate::profile::log_tag()
+        ));
         return;
     };
     if let Err(e) = kv::set_bytes(CACHE_KEY, &bytes) {
-        log::warn(format!("{}: tool cache invalidate failed: {e}", crate::profile::log_tag()));
+        log::warn(format!(
+            "{}: tool cache invalidate failed: {e}",
+            crate::profile::log_tag()
+        ));
     }
 }
 

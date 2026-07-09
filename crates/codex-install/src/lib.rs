@@ -109,13 +109,9 @@ impl CodexInstall {
                 None,
                 "home://.codex",
             ),
-            Err(err) => publish_complete::<CodexLayout>(
-                &principal,
-                false,
-                None,
-                Some(err.to_string()),
-                "",
-            ),
+            Err(err) => {
+                publish_complete::<CodexLayout>(&principal, false, None, Some(err.to_string()), "")
+            }
         }
     }
 
@@ -131,13 +127,9 @@ impl CodexInstall {
                 None,
                 "home://.codex",
             ),
-            Err(err) => publish_complete::<CodexLayout>(
-                &principal,
-                false,
-                None,
-                Some(err.to_string()),
-                "",
-            ),
+            Err(err) => {
+                publish_complete::<CodexLayout>(&principal, false, None, Some(err.to_string()), "")
+            }
         }
     }
 }

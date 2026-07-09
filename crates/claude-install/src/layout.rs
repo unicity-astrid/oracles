@@ -333,7 +333,10 @@ const HOOK_TOPIC_MAP: &[(&str, &str)] = &[
     ("UserPromptExpansion", "claude.v1.hook.message_expanded"),
     ("PreToolUse", "claude.v1.hook.before_tool_call"),
     ("PostToolUse", "claude.v1.hook.after_tool_call"),
-    ("PostToolUseFailure", "claude.v1.hook.after_tool_call_failed"),
+    (
+        "PostToolUseFailure",
+        "claude.v1.hook.after_tool_call_failed",
+    ),
     ("PostToolBatch", "claude.v1.hook.after_tool_batch"),
     ("PermissionRequest", "claude.v1.hook.permission_requested"),
     ("PermissionDenied", "claude.v1.hook.permission_denied"),
@@ -1335,7 +1338,10 @@ mod tests {
 
     #[test]
     fn install_complete_key_is_claude_namespaced() {
-        assert_eq!(install_complete_key("alice"), "claude.install.complete.alice");
+        assert_eq!(
+            install_complete_key("alice"),
+            "claude.install.complete.alice"
+        );
     }
 
     // ------------------------------------------------------------------
