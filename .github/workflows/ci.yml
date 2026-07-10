@@ -97,6 +97,57 @@ jobs:
             echo "ok $f"
           done
 
+      - name: shellcheck plugin scripts
+        run: |
+          set -euo pipefail
+          # --severity=warning is the tier that catches the unterminated-
+          # ${...} expansion class (SC1078/SC2027 are warnings, not errors,
+          # and `sh -n` accepts the damaged file outright).
+          # SC1007: `CDPATH= cd --` is a deliberate idiom here.
+          # SC2034: resolver vars are consumed by sourcing callers.
+          shellcheck --severity=warning --exclude=SC1007,SC2034 \
+            plugins/common/bin/astrid-up plugins/common/bin/astrid-doctor \
+            plugins/common/bin/astrid-install plugins/common/bin/lib-astrid-resolve.sh \
+            plugins/claude/bin/astrid-up plugins/claude/bin/astrid-doctor \
+            plugins/claude/bin/astrid-install plugins/claude/bin/lib-astrid-resolve.sh \
+            plugins/grok/bin/astrid-up plugins/grok/bin/astrid-doctor \
+            plugins/grok/bin/astrid-install plugins/grok/bin/lib-astrid-resolve.sh \
+            plugins/codex/bin/astrid-up plugins/codex/bin/astrid-doctor \
+            plugins/codex/bin/lib-astrid-resolve.sh
+
+      - name: Verify astrid-up executes its resolve block
+        run: |
+          set -euo pipefail
+          # Regression guard: an unterminated ${...} default (missing brace)
+          # once swallowed the whole resolve block — including sourcing
+          # lib-astrid-resolve.sh — into one assignment word, so astrid-up
+          # crashed on unbound vars under set -u and the MCP server died on
+          # launch (-32000). `sh -n` still parses that file, so assert
+          # BEHAVIOUR instead: with no astrid resolvable anywhere, the
+          # resolve-failure branch must run — exit 127 with its guidance.
+          tmp_home="$(mktemp -d)"
+          for host in claude grok; do
+            case "$host" in
+              claude) root_var=CLAUDE_PLUGIN_ROOT ;;
+              grok)   root_var=GROK_PLUGIN_ROOT ;;
+            esac
+            rc=0
+            out="$(env -i PATH=/usr/bin:/bin HOME="$tmp_home" ASTRID_HOME="$tmp_home" \
+              "$root_var=$PWD/plugins/$host" \
+              "plugins/$host/bin/astrid-up" </dev/null 2>&1)" || rc=$?
+            if [ "$rc" -ne 127 ]; then
+              echo "::error::plugins/$host/bin/astrid-up exited $rc (want 127 from the resolve-failure branch). Output:"
+              printf '%s\n' "$out"
+              exit 1
+            fi
+            printf '%s\n' "$out" | grep -q "could not find an executable astrid" || {
+              echo "::error::plugins/$host/bin/astrid-up did not print the resolve-failure guidance. Output:"
+              printf '%s\n' "$out"
+              exit 1
+            }
+            echo "ok $host: resolve block runs (127 + guidance)"
+          done
+
       - name: Verify Codex plugin is self-contained
         run: |
           set -euo pipefail

@@ -37,7 +37,7 @@ log() { printf 'astrid-up: %s\n' "$*" >&2; }
 # Prefer host-wrapper exports, then walk up from this common/bin script to the
 # *calling* plugin root is wrong for common/ — wrappers export ASTRID_PLUGIN_ROOT.
 if [ -z "${ASTRID_PLUGIN_ROOT:-}" ]; then
-  ASTRID_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-${PLUGIN_ROOT:-}}}"
+  ASTRID_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-${PLUGIN_ROOT:-}}}}"
 fi
 if [ -z "${ASTRID_PLUGIN_ROOT:-}" ]; then
   # Last resort: monorepo plugins/common → not a host plugin root; fail closed later.
