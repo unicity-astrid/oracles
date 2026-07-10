@@ -119,3 +119,27 @@ jobs:
 
           resolved="$(ASTRID_PLUGIN_ROOT="$PWD/plugins/codex" ASTRID_BIN="$bin_root/astrid" ASTRID_DAEMON="$bin_root/astrid-daemon" sh -c '. "$ASTRID_PLUGIN_ROOT/bin/lib-astrid-resolve.sh"; astrid_resolve_pair')"
           test "$resolved" = "direct|$bin_root/astrid|$bin_root/astrid-daemon"
+
+      - name: Verify Claude/Grok plugins are self-contained (synced from common)
+        run: |
+          set -euo pipefail
+          # Marketplace install packages ONLY a single plugin's source subtree,
+          # so a mirror host's bin/ must ship real, regular-file copies of the
+          # shared scripts. A thin wrapper that exec's ../../common/bin/astrid-up,
+          # or a symlink into ../../common, dangles in the installed cache and the
+          # MCP stdio server dies on launch ("-32000 failed to reconnect").
+          for h in claude grok; do
+            for f in astrid-up astrid-doctor astrid-install lib-astrid-resolve.sh; do
+              p="plugins/$h/bin/$f"
+              test -f "$p"   || { echo "::error::$p is missing"; exit 1; }
+              test ! -L "$p" || { echo "::error::$p is a symlink; must be a regular file"; exit 1; }
+            done
+          done
+          # And they must not have drifted from the plugins/common/bin source.
+          scripts/sync-plugins.sh
+          if ! git diff --quiet -- plugins/claude/bin plugins/grok/bin; then
+            echo "::error::plugins/{claude,grok}/bin drifted from plugins/common/bin."
+            echo "Edit plugins/common/bin, then run scripts/sync-plugins.sh and commit."
+            git --no-pager diff --stat -- plugins/claude/bin plugins/grok/bin
+            exit 1
+          fi

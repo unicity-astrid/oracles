@@ -85,8 +85,12 @@ grok plugin install /path/to/oracles/plugins/grok --trust
 # install plugins/codex via Codex plugin marketplace (.agents/plugins)
 ```
 
-Shared scripts: `plugins/common/bin/`. Host wrappers set `ASTRID_HOST` and
-plugin root env vars.
+Shared scripts live in `plugins/common/bin/` (the source of truth); each host
+plugin ships a self-contained regular-file copy in its own `bin/`, materialized
+by `scripts/sync-plugins.sh` and drift-checked in CI. Marketplace install
+packages only one plugin's subtree, so a host `bin/` must never reference a
+sibling `../../common`; the scripts self-derive the host from its plugin-root
+env var.
 
 ## Build & test
 

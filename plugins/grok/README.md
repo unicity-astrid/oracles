@@ -22,6 +22,8 @@ curl -fsSL https://astridos.org/install.sh | sh -s -- --host grok
 ```
 
 Plugin name is **`astrid`** (matches `.grok-plugin/marketplace.json`). Shared
-shell logic lives in `plugins/common/bin/`. Host wrappers only set `ASTRID_HOST`
-/ plugin root env. SessionStart runs `bin/astrid-doctor` (runtime + plugin +
-distro update clocks, ~24h rate limit).
+shell logic lives in `plugins/common/bin/`; each host plugin ships a
+self-contained copy in its own `bin/` (materialized by `scripts/sync-plugins.sh`),
+so the marketplace-packaged plugin never reaches outside its own directory. The
+scripts self-derive the host from its plugin-root env var. SessionStart runs
+`bin/astrid-doctor` (runtime + plugin + distro update clocks, ~24h rate limit).
