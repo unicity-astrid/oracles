@@ -44,6 +44,23 @@ if [ -z "${ASTRID_PLUGIN_ROOT:-}" ]; then
   ASTRID_PLUGIN_ROOT="$(CDPATH= cd -- "$(dirname "$0")/.." 2>/dev/null && pwd -P)" \
     || ASTRID_PLUGIN_ROOT="$(dirname "$(dirname "$0")")"
 fi
+
+# Host adapter (claude|grok|codex). This common script is vendored byte-identically
+# into every mirror host, so the family identity it provisions MUST derive from the
+# calling host, not a hardcoded product. Mirror astrid-doctor's detection idiom:
+# the host wrapper exports its own *_PLUGIN_ROOT; fall back to claude.
+if [ -z "${ASTRID_HOST:-}" ]; then
+  if [ -n "${CLAUDE_PLUGIN_ROOT:-}${CLAUDE_PLUGIN_OPTION_PRINCIPAL:-}" ]; then
+    ASTRID_HOST=claude
+  elif [ -n "${GROK_PLUGIN_ROOT:-}" ]; then
+    ASTRID_HOST=grok
+  elif [ -n "${CODEX_PLUGIN_ROOT:-}${PLUGIN_ROOT:-}" ]; then
+    ASTRID_HOST=codex
+  else
+    ASTRID_HOST=claude
+  fi
+fi
+
 RESOLVE="$ASTRID_PLUGIN_ROOT/bin/lib-astrid-resolve.sh"
 if [ ! -f "$RESOLVE" ]; then
   RESOLVE="$(CDPATH= cd -- "$(dirname "$0")" 2>/dev/null && pwd -P)/lib-astrid-resolve.sh"
@@ -263,7 +280,7 @@ ensure_daemon_ready
 # `--principal` with no value.
 # A cleared principal defaults to this least-authority family identity (see the
 # blank-principal handling below), NOT the admin `default`.
-LEAST_AUTHORITY_PRINCIPAL="claude-code"
+LEAST_AUTHORITY_PRINCIPAL="${ASTRID_HOST}-code"
 PRINCIPAL=""
 [ "${1:-}" = "--principal" ] && PRINCIPAL="${2:-}"
 
@@ -311,33 +328,36 @@ else
 fi
 
 # Provision the session principal as a SCOPED agent before serving as it, placed
-# in the `claude` FAMILY group rather than the generic built-in `agent` tier.
-# The `claude` group is a custom, operator-manageable group carrying the same
+# in the host FAMILY group (`$ASTRID_HOST`: claude / grok / codex) rather than the
+# generic built-in `agent` tier. This common script is vendored byte-identically
+# into every mirror host, so the group name derives from the calling host — a grok
+# session lands in the `grok` group, a claude session in `claude`.
+# The family group is a custom, operator-manageable group carrying the same
 # self-scoped baseline the built-in `agent` group grants (`self:*`,
 # `delegate:self:*`): self-service over the principal's OWN session/quota/KV plus
 # recursive delegation, and NONE of the admin-meta surface the `default`
-# principal holds via the `admin` group (`*`). So the governed Claude session can
+# principal holds via the `admin` group (`*`). So the governed session can
 # drive its own tools but cannot administer the OS it runs on — no system-wide
 # capsule:install, no agent:* / group:* / caps:grant, no quota:set on other
-# principals, no system:shutdown, no audit:read_all across principals. Claude
+# principals, no system:shutdown, no audit:read_all across principals. The host
 # runs as a least-authority agent, not as admin.
 #
-# Why a named `claude` group instead of the built-in `agent`: it is the Claude
-# product FAMILY identity. Per-product principals (claude-code here; claude-chat,
-# cowork later) share this one baseline and diverge via per-principal
+# Why a named host group instead of the built-in `agent`: it is the host product
+# FAMILY identity. Per-product principals (e.g. claude-code / grok-code / codex-code
+# here; sibling products later) share this one baseline and diverge via per-principal
 # grants/revokes (precedence: revokes > grants > group). An operator can re-tune
-# the whole family's authority in one place — `astrid group modify claude
+# the whole family's authority in one place — `astrid group modify $ASTRID_HOST
 # --add-caps ...` propagates live to every member on its next check — while the
-# built-in `agent` tier stays the generic fallback for non-Claude agents.
+# built-in `agent` tier stays the generic fallback for other agents.
 #
-#   group create claude --caps self:*,delegate:self:*   the family baseline
-#   agent create <p> --group claude --yes               scoped principal in it
+#   group create $ASTRID_HOST --caps self:*,delegate:self:*  the family baseline
+#   agent create <p> --group $ASTRID_HOST --yes              scoped principal in it
 #   --yes                   non-interactive (no TTY in a plugin/MCP context)
 #   --inherit-from default  copy the operator's env/KV/secrets so tool execution
 #                           behaves identically, minus that authority. Landed
 #                           after astrid 0.8.0; on an older CLI it is rejected and
 #                           we fall back to the plain scoped create. The scoping
-#                           (group `claude`) is identical either way — only the
+#                           (group `$ASTRID_HOST`) is identical either way — only the
 #                           env/secret carry-over is version-gated.
 #
 # Idempotent + non-fatal, but NOT silent: a second run hits "already exists"
@@ -360,21 +380,21 @@ fi
 # never falls back to unauthenticated). The scoping below is therefore an
 # enforced boundary, not just an honest default.
 if [ -n "$PRINCIPAL" ] && [ "$PRINCIPAL" != "default" ]; then
-  # Ensure the `claude` family group exists before placing the principal in it.
-  # CREATE-IF-ABSENT, never reconcile: we only `group create` when `group show`
+  # Ensure the `$ASTRID_HOST` family group exists before placing the principal in
+  # it. CREATE-IF-ABSENT, never reconcile: we only `group create` when `group show`
   # reports it missing, so an operator who later retunes the group
-  # (`astrid group modify claude --add-caps/--remove-caps`) keeps that change —
+  # (`astrid group modify $ASTRID_HOST --add-caps/--remove-caps`) keeps that change —
   # a subsequent launch sees the group present and skips the create entirely.
   # Belt & suspenders: `group create` is create-only (the kernel rejects a
   # redundant create as "declares ... more than once"), so it can NEVER overwrite
   # existing caps even if the `group show` guard is lost to a race. Likewise the
   # `agent create` below no-ops on an existing principal, so an operator's group
   # reassignment of the principal also survives.
-  if ! "$ASTRID" group show claude >/dev/null 2>&1; then
-    if group_out="$("$ASTRID" group create claude \
+  if ! "$ASTRID" group show "$ASTRID_HOST" >/dev/null 2>&1; then
+    if group_out="$("$ASTRID" group create "$ASTRID_HOST" \
         --caps "self:*,delegate:self:*" \
-        --description "Claude product family — self-scoped baseline" 2>&1)"; then
-      log "created the 'claude' capability group (self-scoped baseline)."
+        --description "$ASTRID_HOST product family — self-scoped baseline" 2>&1)"; then
+      log "created the '$ASTRID_HOST' capability group (self-scoped baseline)."
     else
       case "$group_out" in
         # Exists already, or a concurrent launch won the create between our
@@ -382,19 +402,19 @@ if [ -n "$PRINCIPAL" ] && [ "$PRINCIPAL" != "default" ]; then
         # redundant create as "declares ... more than once", not "exists".
         *"already exists"*|*"more than once"*) : ;;
         *)
-          log "WARNING: could not create the 'claude' group:"
+          log "WARNING: could not create the '$ASTRID_HOST' group:"
           log "  ${group_out:-<no output>}"
           log "  '$PRINCIPAL' may fall back to an unscoped profile." ;;
       esac
     fi
   fi
 
-  log "ensuring scoped agent principal '$PRINCIPAL' exists (group 'claude')..."
+  log "ensuring scoped agent principal '$PRINCIPAL' exists (group '$ASTRID_HOST')..."
   # Enriched form first (carries env/secrets, post-0.8.0); fall back to the plain
-  # scoped create. Both place the principal in the `claude` group. Capture output
-  # so a real failure can be reported.
-  if create_out="$("$ASTRID" agent create "$PRINCIPAL" --group claude --inherit-from default --yes 2>&1)" \
-     || create_out="$("$ASTRID" agent create "$PRINCIPAL" --group claude --yes 2>&1)"; then
+  # scoped create. Both place the principal in the `$ASTRID_HOST` group. Capture
+  # output so a real failure can be reported.
+  if create_out="$("$ASTRID" agent create "$PRINCIPAL" --group "$ASTRID_HOST" --inherit-from default --yes 2>&1)" \
+     || create_out="$("$ASTRID" agent create "$PRINCIPAL" --group "$ASTRID_HOST" --yes 2>&1)"; then
     log "scoped principal '$PRINCIPAL' ready."
   else
     case "$create_out" in
