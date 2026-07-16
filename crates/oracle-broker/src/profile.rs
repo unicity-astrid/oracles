@@ -43,7 +43,7 @@ pub(crate) fn identity() -> &'static OracleIdentity {
     )
 }
 
-/// Log-line tag (`astrid-mcp`).
+/// Log-line tag (`aos-mcp`).
 #[inline]
 #[must_use]
 pub(crate) fn log_tag() -> &'static str {
@@ -79,7 +79,7 @@ mod tests {
     fn install_aos_is_idempotent() {
         install_aos();
         install_aos();
-        assert_eq!(identity().capsule_name.as_str(), "astrid-mcp");
+        assert_eq!(identity().capsule_name.as_str(), "aos-mcp");
         assert_eq!(mcp_tool_prefix(), "mcp__aos__");
     }
 }

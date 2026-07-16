@@ -12,8 +12,8 @@ license = "MIT OR Apache-2.0"
 aos-version = ">=2026.1.0"
 
 [[capsule]]
-name = "astrid-mcp"
-asset = "astrid-mcp.capsule"
+name = "aos-mcp"
+asset = "aos-mcp.capsule"
 
 [[capsule]]
 name = "claude-install"

@@ -1,4 +1,4 @@
-//! Native-tool `before_tool_call` verdict responder — astrid-mcp as a
+//! Native-tool `before_tool_call` verdict responder — aos-mcp as a
 //! `ToolCallBefore` merge participant.
 //!
 //! This is the SECOND plane of the same per-principal PDP. The broker

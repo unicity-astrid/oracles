@@ -19,7 +19,6 @@ Options:
   --aos-version V       Install an exact AOS version
   --oracle-version V    Install an exact oracle-pack version
   --yes                 Accept installer prompts
-  --no-migrate-prompt   Do not prompt to migrate an existing installation
   -h, --help            Show this help
 
 The committed .mcp.json launches the public `aos` MCP server through aos-up.
@@ -33,7 +32,6 @@ aos_channel=""
 aos_version=""
 oracle_version=""
 assume_yes=0
-no_migrate_prompt=0
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -61,9 +59,6 @@ while [ "$#" -gt 0 ]; do
     --yes)
       assume_yes=1
       ;;
-    --no-migrate-prompt)
-      no_migrate_prompt=1
-      ;;
     -h|--help)
       usage
       exit 0
@@ -85,7 +80,6 @@ if [ "$skip_aos_install" = "0" ]; then
   [ -z "$aos_version" ] || set -- "$@" --aos-version "$aos_version"
   [ -z "$oracle_version" ] || set -- "$@" --oracle-version "$oracle_version"
   [ "$assume_yes" = "0" ] || set -- "$@" --yes
-  [ "$no_migrate_prompt" = "0" ] || set -- "$@" --no-migrate-prompt
   "$root/bin/aos-install" "$@"
 fi
 

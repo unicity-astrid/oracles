@@ -6,9 +6,9 @@ use crate::newtypes::{AuditTopicPrefix, CapsuleName, LogTag, McpNamespace, McpTo
 
 /// Product and runtime identities for the shared oracle broker.
 ///
-/// The product-facing MCP namespace is AOS. Published capsule names and
-/// transport topics remain Astrid identifiers so existing artifacts and wire
-/// contracts retain their provenance.
+/// The product-facing MCP namespace and broker capsule are AOS-owned. Transport
+/// topics remain Astrid identifiers so the engine wire contract retains its
+/// provenance.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OracleIdentity {
     /// Capsule component id.
@@ -30,10 +30,10 @@ pub struct OracleIdentity {
 impl OracleIdentity {
     /// The only oracle identity. Host adapters do not get their own.
     pub const AOS: Self = Self {
-        capsule_name: CapsuleName("astrid-mcp"),
+        capsule_name: CapsuleName("aos-mcp"),
         mcp_namespace: McpNamespace("aos"),
         mcp_tool_prefix: McpToolPrefix("mcp__aos__"),
-        log_tag: LogTag("astrid-mcp"),
+        log_tag: LogTag("aos-mcp"),
         tools_list_topic: Topic("astrid.v1.tools.list"),
         tools_describe_topic: Topic("astrid.v1.tools.describe"),
         audit_topic_prefix: AuditTopicPrefix("astrid.v1.audit."),
@@ -65,7 +65,7 @@ mod tests {
     #[test]
     fn aos_identity_preserves_the_astrid_runtime_wire() {
         let id = OracleIdentity::AOS;
-        assert_eq!(id.capsule_name.as_str(), "astrid-mcp");
+        assert_eq!(id.capsule_name.as_str(), "aos-mcp");
         assert_eq!(id.mcp_namespace.as_str(), "aos");
         assert_eq!(id.mcp_tool_prefix.as_str(), "mcp__aos__");
         assert_eq!(id.tools_list_topic.as_str(), "astrid.v1.tools.list");

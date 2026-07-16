@@ -103,9 +103,4 @@ if [ "$skip_codex_install" = "0" ]; then
   fi
   codex plugin add unicity-aos@unicity-aos-oracles
 
-  # Avoid duplicate MCP servers and hooks after a successful migration. These
-  # removals are best effort because the legacy plugin/marketplace may not be
-  # present on a clean install.
-  codex plugin remove astrid@astrid-oracles >/dev/null 2>&1 || true
-  codex plugin marketplace remove astrid-oracles >/dev/null 2>&1 || true
 fi

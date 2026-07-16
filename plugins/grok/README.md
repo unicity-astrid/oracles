@@ -27,4 +27,4 @@ The wrapper never provisions principals, installs capsules, or reaches into the
 private runtime home.
 
 Visible tools use `mcp__aos__*`. The internal broker capsule remains
-`astrid-mcp`, and its stable runtime topics remain `astrid.v1.*`.
+`aos-mcp`, and its stable runtime topics remain `astrid.v1.*`.

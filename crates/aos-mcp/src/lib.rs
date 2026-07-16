@@ -1,4 +1,4 @@
-//! astrid-mcp — the neutral runtime capsule behind the Unicity AOS MCP surface.
+//! aos-mcp — the neutral runtime capsule behind the Unicity AOS MCP surface.
 //!
 //! One capsule for every host (Claude Code, Grok Build, Codex). Host plugins
 //! only change principal + hooks; they all talk to this broker.
@@ -9,16 +9,16 @@
 use astrid_sdk::prelude::*;
 use oracle_broker::handlers;
 
-/// Astrid MCP broker capsule.
+/// Unicity AOS MCP broker capsule over the Astrid runtime wire.
 #[derive(Default)]
-pub struct AstridMcp;
+pub struct AosMcp;
 
 fn ensure_identity() {
     oracle_broker::install_aos();
 }
 
 #[capsule]
-impl AstridMcp {
+impl AosMcp {
     /// astrid.v1.tools.describe
     #[astrid::interceptor("describe_tools")]
     pub fn describe_tools(&self, payload: serde_json::Value) -> Result<(), SysError> {

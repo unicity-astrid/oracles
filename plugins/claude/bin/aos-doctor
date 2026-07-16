@@ -1,8 +1,9 @@
 #!/usr/bin/env sh
-# Read-only readiness report for an AOS-backed oracle host session.
+# SessionStart bootstrap and readiness report for an AOS-backed oracle host.
 set -eu
 
 FORMAT=human
+NUDGE_MSG=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --format)
@@ -23,7 +24,32 @@ case "$FORMAT" in
   *) printf 'aos-doctor: unsupported format: %s\n' "$FORMAT" >&2; exit 2 ;;
 esac
 
-emit() { printf '%s\n' "$1"; }
+json_escape() {
+  printf '%s' "$1" \
+    | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' \
+    | awk 'NR>1{printf "\\n"} {printf "%s", $0}'
+}
+
+emit() {
+  report=$1
+  if [ "$FORMAT" != hook ]; then
+    printf '%s\n' "$report"
+  elif command -v jq >/dev/null 2>&1; then
+    if [ -n "$NUDGE_MSG" ]; then
+      jq -n --arg ctx "$report" --arg msg "$NUDGE_MSG" \
+        '{systemMessage:$msg,hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$ctx}}'
+    else
+      jq -n --arg ctx "$report" \
+        '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$ctx}}'
+    fi
+  elif [ -n "$NUDGE_MSG" ]; then
+    printf '{"systemMessage":"%s","hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' \
+      "$(json_escape "$NUDGE_MSG")" "$(json_escape "$report")"
+  else
+    printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' \
+      "$(json_escape "$report")"
+  fi
+}
 
 if [ -z "${AOS_PLUGIN_ROOT:-}" ]; then
   AOS_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT:-${PLUGIN_ROOT:-}}}"
@@ -43,26 +69,6 @@ if [ -z "${AOS_HOST:-}" ]; then
 fi
 export AOS_HOST
 
-RESOLVE="$AOS_PLUGIN_ROOT/bin/lib-aos-resolve.sh"
-if [ ! -f "$RESOLVE" ]; then
-  RESOLVE="$(CDPATH= cd -- "$(dirname "$0")" 2>/dev/null && pwd -P)/lib-aos-resolve.sh"
-fi
-# shellcheck source=lib-aos-resolve.sh
-. "$RESOLVE"
-
-if ! aos_resolve_apply; then
-  emit "Unicity AOS is not installed, so this session has no AOS capsule tools.
-
-Install and provision this host explicitly:
-
-    $(dirname "$0")/aos-install --host $AOS_HOST
-
-The supported AOS installer is https://aos.unicity.ai/install.sh. The oracle
-installer uses it and then provisions the '$AOS_HOST' host; MCP startup never
-installs software or mutates product configuration."
-  exit 0
-fi
-
 case "$AOS_HOST" in
   grok) DEFAULT_PRINCIPAL=grok-code ;;
   *) DEFAULT_PRINCIPAL=claude-code ;;
@@ -73,20 +79,73 @@ case "$PRINCIPAL" in
   ""|'${user_config.principal}') PRINCIPAL="$DEFAULT_PRINCIPAL" ;;
 esac
 
+RESOLVE="$AOS_PLUGIN_ROOT/bin/lib-aos-resolve.sh"
+if [ ! -f "$RESOLVE" ]; then
+  RESOLVE="$(CDPATH= cd -- "$(dirname "$0")" 2>/dev/null && pwd -P)/lib-aos-resolve.sh"
+fi
+# shellcheck source=lib-aos-resolve.sh
+. "$RESOLVE"
+
+BOOTSTRAP_ERROR=""
+resolve_initial() {
+  if [ "$FORMAT" = hook ]; then
+    aos_resolve_apply 2>/dev/null
+  else
+    aos_resolve_apply
+  fi
+}
+
+bootstrap_host() {
+  [ "$FORMAT" = hook ] || return 1
+  installer="$AOS_PLUGIN_ROOT/bin/aos-install"
+  [ -x "$installer" ] || return 1
+  log="${TMPDIR:-/tmp}/aos-$AOS_HOST-bootstrap.$$.log"
+  set -- --host "$AOS_HOST" --yes
+  if [ "$AOS_HOST" = claude ] && [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+    set -- "$@" --claude-auth subscription --claude-mode repl
+  fi
+  if AOS_HOST="$AOS_HOST" "$installer" "$@" >"$log" 2>&1; then
+    rm -f "$log"
+    aos_resolve_apply
+    return $?
+  fi
+  BOOTSTRAP_ERROR="$(tail -n 1 "$log" 2>/dev/null || true)"
+  rm -f "$log"
+  return 1
+}
+
+if ! resolve_initial && ! bootstrap_host; then
+  emit "Unicity AOS is not installed, so this session has no AOS capsule tools.
+
+Automatic setup could not complete${BOOTSTRAP_ERROR:+: $BOOTSTRAP_ERROR}.
+Retry with:
+
+    $(dirname "$0")/aos-install --host $AOS_HOST --yes
+
+Then start a new host session."
+  exit 0
+fi
+
 VERSION="$("$AOS" --version 2>/dev/null | head -n1 || true)"
 
 # `capsule show` is an on-disk, read-only query. It verifies both that the host
 # principal was provisioned and that the internal broker capsule is present.
-if ! "$AOS" capsule show astrid-mcp --agent "$PRINCIPAL" >/dev/null 2>&1; then
+if ! "$AOS" capsule show aos-mcp --agent "$PRINCIPAL" >/dev/null 2>&1; then
+  if bootstrap_host \
+    && "$AOS" capsule show aos-mcp --agent "$PRINCIPAL" >/dev/null 2>&1
+  then
+    :
+  else
   emit "Unicity AOS — principal '$PRINCIPAL' is not provisioned for this oracle host.
 
-The internal astrid-mcp broker capsule is absent from that principal's AOS
-profile. Run the explicit oracle installer, then reconnect the 'aos' MCP server:
+Automatic setup could not complete${BOOTSTRAP_ERROR:+: $BOOTSTRAP_ERROR}.
+Retry with:
 
-    $(dirname "$0")/aos-install --host $AOS_HOST
+    $(dirname "$0")/aos-install --host $AOS_HOST --yes
 
-Do not copy capsules or edit the private runtime home by hand."
-  exit 0
+Then reconnect the 'aos' MCP server."
+    exit 0
+  fi
 fi
 
 if "$AOS" status --json >/dev/null 2>&1; then
@@ -95,13 +154,17 @@ else
   DAEMON_NOTE="Runtime: currently stopped; the AOS MCP command quiet-starts its bundled ephemeral runtime when this host connects."
 fi
 
+if [ -x "$AOS_PLUGIN_ROOT/bin/aos-update-check" ]; then
+  NUDGE_MSG=$("$AOS_PLUGIN_ROOT/bin/aos-update-check" "$AOS" 2>/dev/null || true)
+fi
+
 emit "Unicity AOS — governed oracle session ready.
 
 Product:    ${VERSION:-Unicity AOS}
 Host:       $AOS_HOST
 Principal:  $PRINCIPAL
 MCP server: aos (visible tools use mcp__aos__*)
-Broker:     astrid-mcp provisioned
+Broker:     aos-mcp provisioned
 $DAEMON_NOTE
 
 Native host tools remain governed by the host application's own sandbox.

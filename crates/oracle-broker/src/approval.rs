@@ -80,12 +80,12 @@
 //! at a time per capsule"*). A broker dispatch
 //! ([`crate::execute::dispatch_with_approval`]) holds that lock for the whole
 //! synchronous drain and returns the instant it observes ANY approval, so a
-//! second astrid-mcp `handle_mcp_call` cannot run — and cannot be watching the
+//! second aos-mcp `handle_mcp_call` cannot run — and cannot be watching the
 //! approval topic — while another is in flight. There is therefore at most
-//! ONE astrid-mcp approval-watcher at a time: the only `astrid.v1.approval`
+//! ONE aos-mcp approval-watcher at a time: the only `astrid.v1.approval`
 //! envelope it can observe during its window is the one ITS OWN routed tool
 //! raised (it published that tool's execute request and nothing else of
-//! astrid-mcp's is running). Intra-capsule cross-talk is structurally
+//! aos-mcp's is running). Intra-capsule cross-talk is structurally
 //! impossible — no claim registry is needed.
 //!
 //! The decision is independently routed correctly regardless: it targets

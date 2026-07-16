@@ -10,9 +10,9 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 EXPECTED = {
-    "claude": ["astrid-mcp", "claude-install", "claude-runner"],
-    "codex": ["astrid-mcp", "codex-install", "codex-runner"],
-    "grok": ["astrid-mcp"],
+    "claude": ["aos-mcp", "claude-install", "claude-runner"],
+    "codex": ["aos-mcp", "codex-install", "codex-runner"],
+    "grok": ["aos-mcp"],
 }
 
 

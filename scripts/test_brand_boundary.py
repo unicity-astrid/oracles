@@ -47,12 +47,16 @@ class BrandBoundaryTests(unittest.TestCase):
             self.assertEqual(set(load_json(path)["mcpServers"]), {"aos"})
 
     def test_retired_public_names_do_not_return(self) -> None:
-        roots = [ROOT / "README.md", ROOT / "plugins"]
+        roots = [ROOT / "README.md", ROOT / "install.sh", ROOT / "plugins"]
         forbidden = {
             "mcp__astrid__": "retired public MCP namespace",
             "/astrid:": "retired public command namespace",
             "astrid mcp serve": "private engine command exposed as product CLI",
             "astrid agent modify": "private engine command exposed as product CLI",
+            "--no-migrate-prompt": "retired cross-product state migration flag",
+            "plugin remove astrid@astrid-oracles": "fresh AOS install mutates the standalone Astrid plugin",
+            "plugin uninstall astrid@astrid-oracles": "fresh AOS install mutates the standalone Astrid plugin",
+            "plugin uninstall astrid": "fresh AOS install mutates the standalone Astrid plugin",
         }
         for root in roots:
             paths = [root] if root.is_file() else [path for path in root.rglob("*") if path.is_file()]
@@ -79,13 +83,14 @@ class BrandBoundaryTests(unittest.TestCase):
             ]
             self.assertNotIn(".astrid", "\n".join(active_lines), str(path.relative_to(ROOT)))
 
-    def test_neutral_engine_identifiers_remain_stable(self) -> None:
+    def test_aos_broker_preserves_the_neutral_engine_wire(self) -> None:
         identity = (ROOT / "crates/oracle-core/src/identity.rs").read_text()
-        self.assertIn('CapsuleName("astrid-mcp")', identity)
+        self.assertIn('CapsuleName("aos-mcp")', identity)
+        self.assertNotIn('CapsuleName("astrid-mcp")', identity)
         self.assertIn('Topic("astrid.v1.tools.list")', identity)
         self.assertIn('McpNamespace("aos")', identity)
         self.assertIn('McpToolPrefix("mcp__aos__")', identity)
-        manifest = (ROOT / "crates/astrid-mcp/Capsule.toml").read_text()
+        manifest = (ROOT / "crates/aos-mcp/Capsule.toml").read_text()
         self.assertIn("@unicity-astrid/wit/", manifest)
         self.assertNotIn("@astrid-runtime/wit/", manifest)
 

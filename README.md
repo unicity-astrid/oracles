@@ -49,9 +49,9 @@ distributions.
 
 | Host | Principal | Additions on top of Community Edition |
 |---|---|---|
-| Claude Code | `claude-code` | `astrid-mcp`, `claude-install`, `claude-runner` |
-| Codex | `codex-code` | `astrid-mcp`, `codex-install`, `codex-runner` |
-| Grok Build | `grok-code` | `astrid-mcp` |
+| Claude Code | `claude-code` | `aos-mcp`, `claude-install`, `claude-runner` |
+| Codex | `codex-code` | `aos-mcp`, `codex-install`, `codex-runner` |
+| Grok Build | `grok-code` | `aos-mcp` |
 
 Pack manifests live under `packs/`. Host plugins are installed from the signed
 release snapshot under `~/.aos/extensions/oracles/plugins/<version>`, never from
@@ -69,16 +69,16 @@ host marketplace plugin
 aos --principal <host>-code mcp serve
         |
         v
-astrid-mcp + host capsules
+aos-mcp + host capsules
         |
         v
 Unicity AOS Community Edition
 ```
 
-The customer-facing server and tool namespace are `aos` and `mcp__aos__*`.
-Published runtime identifiers remain unchanged behind that adapter:
-`astrid-mcp`, `astrid.v1.*`, `astrid-sdk`, the `astrid:*` WIT world, and the
-bundled runtime binaries retain their permanent names and provenance.
+The customer-facing server, broker capsule, and tool namespace are `aos`,
+`aos-mcp`, and `mcp__aos__*`. Neutral runtime identifiers remain unchanged
+behind that adapter: `astrid.v1.*`, `astrid-sdk`, the `astrid:*` WIT world, and
+the bundled runtime binaries retain their permanent names and provenance.
 
 ## Develop
 

@@ -48,7 +48,7 @@ if [ -z "$GATE" ]; then
               fi; } 2>/dev/null || true )"
     if ! printf '%s' "$st" | grep -Eq '"state"[[:space:]]*:[[:space:]]*"running"'; then
       GATE=down
-    elif printf '%s' "$st" | grep -Eq '"loaded_capsules"[[:space:]]*:[[:space:]]*\[[^]]*"astrid-mcp"'; then
+    elif printf '%s' "$st" | grep -Eq '"loaded_capsules"[[:space:]]*:[[:space:]]*\[[^]]*"aos-mcp"'; then
       GATE=up
     else
       GATE=degraded

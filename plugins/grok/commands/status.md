@@ -7,4 +7,4 @@ Report the live AOS runtime state.
 !`aos status --json 2>/dev/null || echo "(unavailable — is Unicity AOS installed?)"`
 
 Summarize whether the runtime is reachable and whether the internal
-`astrid-mcp` broker is loaded.
+`aos-mcp` broker is loaded.

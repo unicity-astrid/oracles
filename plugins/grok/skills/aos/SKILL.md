@@ -9,7 +9,7 @@ You are Grok Build connected to Unicity AOS as the `grok-code` principal.
 
 - Public MCP server: `aos`
 - Visible governed tools: `mcp__aos__*`
-- Internal runtime broker capsule: `astrid-mcp`
+- Internal runtime broker capsule: `aos-mcp`
 - Stable internal broker topics: `astrid.v1.request.mcp.*`
 - Product command: `aos`
 

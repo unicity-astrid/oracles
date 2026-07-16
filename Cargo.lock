@@ -9,6 +9,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2a4385e2e34eb35d6b3efe798b9eb88096925d87726c0798709bf56d9ed84af3"
 
 [[package]]
+name = "aos-mcp"
+version = "0.1.0"
+dependencies = [
+ "astrid-sdk",
+ "oracle-broker",
+ "oracle-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "arrayref"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -19,17 +30,6 @@ name = "arrayvec"
 version = "0.7.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d3fb67a6e08acf24fdeccbac2cb6ac4305825bd1f117462e0e6f2f193345ad56"
-
-[[package]]
-name = "astrid-mcp"
-version = "0.1.0"
-dependencies = [
- "astrid-sdk",
- "oracle-broker",
- "oracle-core",
- "serde",
- "serde_json",
-]
 
 [[package]]
 name = "astrid-sdk"

@@ -1,7 +1,7 @@
 [package]
-name = "astrid-mcp"
+name = "aos-mcp"
 version = "0.1.0"
-description = "MCP server bridging Astrid capsule tools to the host agent via MCP wire protocol"
+description = "Unicity AOS MCP broker bridging Astrid capsule tools to host agents"
 authors = [
     "Joshua J. Bouw <dev@joshuajbouw.com>",
     "Unicity Labs <info@unicity-labs.com>",
@@ -9,8 +9,8 @@ authors = [
 astrid-version = ">=0.7.0"
 
 [[component]]
-id = "astrid-mcp"
-file = "astrid_mcp.wasm"
+id = "aos-mcp"
+file = "aos_mcp.wasm"
 type = "executable"
 
 [capabilities]
@@ -37,9 +37,9 @@ kv = []
 # evadable) — the robust shapes are allowlist-style eq/prefix. See
 # `crate::policy`.
 [env]
-policy_rules = { type = "string", default = "", request = "Per-principal policy rules as a JSON array (leave blank for none); see astrid-mcp policy docs" }
+policy_rules = { type = "string", default = "", request = "Per-principal policy rules as a JSON array (leave blank for none); see aos-mcp policy docs" }
 
-# astrid-mcp describes the tool surface the host agent sees by querying the tool
+# aos-mcp describes the tool surface the host agent sees by querying the tool
 # registry and reshaping into MCP tool descriptors, and brokers tool
 # execution over the `astrid.v1.*` MCP surface (dispatched via the
 # tool.v1 bus protocol). Tool calls arrive ONLY through that broker front
@@ -114,7 +114,7 @@ policy_rules = { type = "string", default = "", request = "Per-principal policy 
 # subscribe surface must enumerate both arities.
 "tool.v1.execute.*.result" = "@unicity-astrid/wit/types/tool-call-result"
 "tool.v1.execute.*.*.result" = "@unicity-astrid/wit/types/tool-call-result"
-# Native-tool verdict responder (the second PDP plane). astrid-mcp joins the
+# Native-tool verdict responder (the second PDP plane). aos-mcp joins the
 # hook-bridge `ToolCallBefore` merge: a `before_tool_call` fan-out — from the
 # kernel bridge (a bus-mediated tool) or an external `astrid-gate` PreToolUse
 # hook (a native tool) — carrying a correlation id gets a `{ skip }` verdict.

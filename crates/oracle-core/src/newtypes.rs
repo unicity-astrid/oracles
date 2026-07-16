@@ -55,7 +55,7 @@ str_newtype!(
     McpToolPrefix
 );
 str_newtype!(
-    /// Capsule package / component id (`astrid-mcp`).
+    /// Capsule package / component id (`aos-mcp`).
     CapsuleName
 );
 str_newtype!(
@@ -71,6 +71,6 @@ str_newtype!(
     AuditTopicPrefix
 );
 str_newtype!(
-    /// Log line tag (`astrid-mcp`).
+    /// Log line tag (`aos-mcp`).
     LogTag
 );

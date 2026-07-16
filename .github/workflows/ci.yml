@@ -64,7 +64,7 @@ jobs:
       - name: Build all capsule crates
         run: |
           cargo build --locked --release \
-            -p astrid-mcp \
+            -p aos-mcp \
             -p claude-runner -p claude-install -p claude-completion \
             -p codex-runner -p codex-install
 
@@ -80,8 +80,7 @@ jobs:
             plugins/common/bin/* \
             plugins/claude/bin/aos-* \
             plugins/grok/bin/aos-* \
-            plugins/unicity-aos/bin/aos-up \
-            plugins/unicity-aos/bin/aos-doctor \
+            plugins/unicity-aos/bin/aos-* \
             plugins/unicity-aos/bin/lib-aos-resolve.sh \
             plugins/unicity-aos/install.sh
           do
@@ -108,8 +107,10 @@ jobs:
             plugins/claude/bin/aos-install plugins/claude/bin/lib-aos-resolve.sh \
             plugins/claude/bin/aos-statusline plugins/claude/bin/aos-subagent-statusline \
             plugins/grok/bin/aos-up plugins/grok/bin/aos-doctor \
-            plugins/grok/bin/aos-install plugins/grok/bin/lib-aos-resolve.sh \
+            plugins/grok/bin/aos-install plugins/grok/bin/aos-update-check \
+            plugins/grok/bin/lib-aos-resolve.sh \
             plugins/unicity-aos/bin/aos-up plugins/unicity-aos/bin/aos-doctor \
+            plugins/unicity-aos/bin/aos-install plugins/unicity-aos/bin/aos-update-check \
             plugins/unicity-aos/bin/lib-aos-resolve.sh plugins/unicity-aos/install.sh
 
       - name: Verify aos-up executes its resolve block
@@ -192,6 +193,10 @@ jobs:
           test ! -L plugins/unicity-aos/bin/lib-aos-resolve.sh
           test -f plugins/unicity-aos/bin/aos-doctor
           test ! -L plugins/unicity-aos/bin/aos-doctor
+          test -f plugins/unicity-aos/bin/aos-install
+          test ! -L plugins/unicity-aos/bin/aos-install
+          test -f plugins/unicity-aos/bin/aos-update-check
+          test ! -L plugins/unicity-aos/bin/aos-update-check
           python3 - <<'PY'
           import json
           from pathlib import Path
@@ -231,7 +236,7 @@ jobs:
           # or a symlink into ../../common, dangles in the installed cache and the
           # MCP stdio server dies on launch ("-32000 failed to reconnect").
           for h in claude grok; do
-            for f in aos-up aos-doctor aos-install lib-aos-resolve.sh; do
+            for f in aos-up aos-doctor aos-install aos-update-check lib-aos-resolve.sh; do
               p="plugins/$h/bin/$f"
               test -f "$p"   || { echo "::error::$p is missing"; exit 1; }
               test ! -L "$p" || { echo "::error::$p is a symlink; must be a regular file"; exit 1; }
@@ -245,10 +250,17 @@ jobs:
           done
           # And they must not have drifted from the plugins/common/bin source.
           scripts/sync-plugins.sh
-          if ! git diff --quiet -- plugins/claude/bin plugins/grok/bin; then
-            echo "::error::plugins/{claude,grok}/bin drifted from plugins/common/bin."
+          if ! git diff --quiet -- \
+            plugins/claude/bin plugins/grok/bin \
+            plugins/unicity-aos/bin/aos-install \
+            plugins/unicity-aos/bin/aos-update-check
+          then
+            echo "::error::vendored plugin scripts drifted from plugins/common/bin."
             echo "Edit plugins/common/bin, then run scripts/sync-plugins.sh and commit."
-            git --no-pager diff --stat -- plugins/claude/bin plugins/grok/bin
+            git --no-pager diff --stat -- \
+              plugins/claude/bin plugins/grok/bin \
+              plugins/unicity-aos/bin/aos-install \
+              plugins/unicity-aos/bin/aos-update-check
             exit 1
           fi
 
@@ -266,7 +278,9 @@ jobs:
           python3 scripts/test_brand_boundary.py
           python3 scripts/test_wit_contract.py
       - name: Exercise the non-interactive pack installer twice
-        run: scripts/test-install.sh
+        run: |
+          scripts/test-install.sh
+          scripts/test-plugin-bootstrap.sh
       - name: Validate the root installer shell
         run: |
           sh -n install.sh

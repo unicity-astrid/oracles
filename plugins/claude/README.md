@@ -66,7 +66,7 @@ Claude exposes the registered server's tools as `mcp__aos__*`. Native Claude
 Code tools continue to use Claude Code's sandbox. Calls through `mcp__aos__*`
 also pass AOS policy, capability, and audit enforcement.
 
-The internal runtime broker capsule remains `astrid-mcp`, and its stable bus
+The internal runtime broker capsule remains `aos-mcp`, and its stable bus
 contracts remain under `astrid.v1.*`. Those are engine identifiers, not the
 customer-facing product or MCP namespace.
 

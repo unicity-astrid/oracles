@@ -9,7 +9,7 @@
 //! - [`mode`] — shared `InteractionMode`
 //! - [`topics`] — host-scoped bus topic builders
 //!
-//! The MCP broker lives in `oracle-broker` / `astrid-mcp`. This crate is
+//! The MCP broker lives in `oracle-broker` / `aos-mcp`. This crate is
 //! everything **around** the broker that a host plugin still needs.
 
 #![deny(unsafe_code)]

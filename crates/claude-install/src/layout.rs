@@ -67,7 +67,7 @@ pub(crate) fn managed_settings_path() -> String {
 }
 
 /// Name of the MCP server AOS registers for the supervised `claude`
-/// session — the `aos mcp serve` stdio shim onto the daemon's astrid-mcp
+/// session — the `aos mcp serve` stdio shim onto the daemon's aos-mcp
 /// broker. Claude prefixes its tools `mcp__aos__*` and references it as the
 /// `server` of the PreToolUse `mcp_tool` gate hook. Single source of truth
 /// for [`mcp_json`] and [`pretooluse_gate_handler`], so the gate's target
@@ -75,13 +75,13 @@ pub(crate) fn managed_settings_path() -> String {
 const MCP_SERVER_NAME: &str = "aos";
 
 /// Raw tool name of the native-tool PreToolUse policy gate the `mcp_tool`
-/// hook calls on the [`MCP_SERVER_NAME`] server. The astrid-mcp broker
+/// hook calls on the [`MCP_SERVER_NAME`] server. The aos-mcp broker
 /// special-cases this exact name — it evaluates the per-principal policy and
 /// returns a binding Claude hook decision instead of dispatching a capsule
 /// tool.
 ///
 /// SYNC (load-bearing): must equal `broker::PRETOOLUSE_GATE_TOOL` in the
-/// astrid-mcp crate. The crates share no dependency edge, so the value is
+/// aos-mcp crate. The crates share no dependency edge, so the value is
 /// mirrored, not shared; a drift silently DISABLES the gate (the broker
 /// would treat the hook's call as an unknown tool, reply `isError`, and the
 /// hook would fail OPEN — the native tool runs ungoverned). A presence test
@@ -220,7 +220,7 @@ const REQUIRED_DENIES: &[&str] = &[
 /// model. With `--permission-mode dontAsk` (binding via argv) only tools
 /// matched here — or read-only sandboxed Bash — run without a prompt;
 /// everything else, including the [`REQUIRED_DENIES`] escape surface, is
-/// auto-denied. `mcp__aos__*` keeps the registered Astrid MCP server
+/// auto-denied. `mcp__aos__*` keeps the registered AOS MCP server
 /// reachable for Astrid-specific operations. Bounds on what these tools can
 /// DO come from the sandbox (Astrid host + Claude inner), not this list.
 ///
@@ -396,7 +396,7 @@ fn hooks_block() -> serde_json::Value {
             "timeout": 10
         })];
         // PreToolUse additionally carries the BINDING-direction policy gate:
-        // a synchronous `mcp_tool` handler that asks the astrid-mcp broker for
+        // a synchronous `mcp_tool` handler that asks the aos-mcp broker for
         // an allow/deny decision on the native tool about to run, and can
         // block it. Every other event stays observe-only (`astrid-emit`). The
         // gate is appended AFTER the observe emit so the audit plane records
@@ -416,7 +416,7 @@ fn hooks_block() -> serde_json::Value {
 ///
 /// Calls the reserved [`PRETOOLUSE_GATE_TOOL`] on the already-connected
 /// [`MCP_SERVER_NAME`] server with the name + input of the native tool about
-/// to run. The astrid-mcp broker evaluates the per-principal policy and returns
+/// to run. The aos-mcp broker evaluates the per-principal policy and returns
 /// a Claude hook decision as the tool's text content; a
 /// `permissionDecision:"deny"` BLOCKS the tool. This is the one
 /// decision-returning hook — every other event is observe-only.
@@ -483,7 +483,7 @@ fn pretooluse_gate_handler() -> serde_json::Value {
 /// Branching is driven by the two axes in [`PrincipalConfig`]:
 ///
 /// * [`InteractionMode::Headless`]: the runner drives the loop. The allow list
-///   is [`NATIVE_ALLOW`] (Claude's dev tools + the Astrid MCP surface), the
+///   is [`NATIVE_ALLOW`] (Claude's dev tools + the AOS MCP surface), the
 ///   escape surface in [`REQUIRED_DENIES`] is denied, `permissions.defaultMode`
 ///   is `dontAsk` (auto-deny the rest, no prompt), the `sandbox` block bounds
 ///   Claude's native tools, and `disableSkillShellExecution` blocks the skill
@@ -510,7 +510,7 @@ fn pretooluse_gate_handler() -> serde_json::Value {
 /// then authenticates the per-(principal, session) spawn token and
 /// republishes on canonical `hook.v1.event.*` (or
 /// `claude.v1.notification` for the one event without a canonical
-/// equivalent today). The `astrid-capsule-hook-bridge` WASM capsule
+/// equivalent today). The `aos-hook-bridge` WASM capsule
 /// already maps lifecycle events to semantic hooks on the bus side.
 pub(crate) fn settings_json(cfg: &PrincipalConfig) -> serde_json::Value {
     let (allow, deny, headless): (Vec<&str>, Vec<&str>, bool) = match cfg.interaction_mode {
@@ -618,7 +618,7 @@ pub(crate) fn managed_settings_json(cfg: &PrincipalConfig) -> serde_json::Value 
 ///
 /// Registered identically in BOTH modes: the `aos` MCP server as
 /// `aos --principal <principal_id> mcp serve` — the stdio MCP server
-/// that fronts the daemon's astrid-mcp broker (astrid-runtime/astrid#880).
+/// that fronts the daemon's aos-mcp broker (astrid-runtime/astrid#880).
 /// `principal_id` is the sanitised invoking principal, baked in so the
 /// server stamps the right identity on its broker requests (`aos mcp
 /// serve` does NOT infer it — absent `--principal` it falls back to the
@@ -636,7 +636,7 @@ pub(crate) fn managed_settings_json(cfg: &PrincipalConfig) -> serde_json::Value 
 pub(crate) fn mcp_json(_cfg: &PrincipalConfig, principal_id: &str) -> serde_json::Value {
     // Register the AOS MCP server in BOTH modes. This is what makes a
     // session an AOS session: `aos mcp serve` is the stdio shim onto the
-    // daemon's astrid-mcp broker, so Claude — headless OR the interactive
+    // daemon's aos-mcp broker, so Claude — headless OR the interactive
     // REPL the operator drives in this folder — discovers and calls the
     // capsule tool surface (`mcp__aos__*`). The principal is baked in so
     // the daemon scopes tool execution to this identity. The operator can
@@ -799,7 +799,7 @@ mod tests {
     }
 
     fn assert_headless_shape(v: &serde_json::Value) {
-        // Native-tools allow surface: the dev tools + the Astrid MCP server,
+        // Native-tools allow surface: the dev tools + the AOS MCP server,
         // exactly NATIVE_ALLOW.
         let allow = v
             .pointer("/permissions/allow")
@@ -975,7 +975,7 @@ mod tests {
         assert_eq!(
             entry.pointer("/server").and_then(|x| x.as_str()),
             Some(MCP_SERVER_NAME),
-            "gate must target the registered Astrid MCP server"
+            "gate must target the registered AOS MCP server"
         );
         assert_eq!(
             entry.pointer("/tool").and_then(|x| x.as_str()),
@@ -1296,7 +1296,7 @@ mod tests {
     fn pretooluse_gate_tool_name_is_pinned() {
         // Value anchor for the cross-crate SYNC with
         // `oracle_broker::broker::PRETOOLUSE_GATE_TOOL`. No dependency edge between
-        // the crates, so the name is mirrored, not shared; the astrid-mcp side
+        // the crates, so the name is mirrored, not shared; the aos-mcp side
         // pins the same literal in `gate_tool_name_is_pinned`. A rename on one
         // side without the other silently disables the gate, so both anchor
         // the exact string and a deliberate edit must touch both tests.

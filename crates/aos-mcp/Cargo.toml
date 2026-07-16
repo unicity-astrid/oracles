@@ -1,12 +1,12 @@
 [package]
-name = "astrid-mcp"
+name = "aos-mcp"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Neutral Astrid broker capsule behind the Unicity AOS MCP surface"
+description = "Unicity AOS MCP broker capsule over the neutral Astrid runtime wire"
 publish = false
 
 [lib]

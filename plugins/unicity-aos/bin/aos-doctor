@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Read-only SessionStart health check for the Unicity AOS Codex plugin.
+# SessionStart bootstrap and health check for the Unicity AOS Codex plugin.
 set -eu
 
 MODE=human
@@ -31,6 +31,8 @@ if [ -z "$AOS_PLUGIN_ROOT" ]; then
     || AOS_PLUGIN_ROOT="$(dirname "$(dirname "$0")")"
 fi
 export AOS_PLUGIN_ROOT
+BOOTSTRAP_ERROR=""
+NUDGE_MSG=""
 
 RESOLVE="$AOS_PLUGIN_ROOT/bin/lib-aos-resolve.sh"
 if [ ! -f "$RESOLVE" ]; then
@@ -52,75 +54,115 @@ emit() {
     return 0
   fi
   if command -v jq >/dev/null 2>&1; then
-    jq -n --arg ctx "$report" \
-      '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$ctx}}'
+    if [ -n "$NUDGE_MSG" ]; then
+      jq -n --arg ctx "$report" --arg msg "$NUDGE_MSG" \
+        '{systemMessage:$msg,hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$ctx}}'
+    else
+      jq -n --arg ctx "$report" \
+        '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$ctx}}'
+    fi
   else
-    printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' \
-      "$(json_escape "$report")"
+    if [ -n "$NUDGE_MSG" ]; then
+      printf '{"systemMessage":"%s","hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' \
+        "$(json_escape "$NUDGE_MSG")" "$(json_escape "$report")"
+    else
+      printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' \
+        "$(json_escape "$report")"
+    fi
   fi
 }
-
-if ! aos_resolve_apply; then
-  emit "Unicity AOS is not installed, so this Codex session has no governed AOS tools.
-
-Install it with:
-
-    curl -fsSL https://aos.unicity.ai/install.sh | sh
-
-Then start a new Codex session."
-  exit 0
-fi
 
 PRINCIPAL="${ASTRID_PRINCIPAL_ID:-codex-code}"
 case "$PRINCIPAL" in
   ""|*[!A-Za-z0-9_-]*) PRINCIPAL=codex-code ;;
 esac
 
+resolve_initial() {
+  if [ "$MODE" = hook ]; then
+    aos_resolve_apply 2>/dev/null
+  else
+    aos_resolve_apply
+  fi
+}
+
+bootstrap_codex() {
+  [ "$MODE" = hook ] || return 1
+  installer="$AOS_PLUGIN_ROOT/bin/aos-install"
+  [ -x "$installer" ] || return 1
+  log="${TMPDIR:-/tmp}/aos-codex-bootstrap.$$.log"
+  if AOS_HOST=codex "$installer" --host codex --yes >"$log" 2>&1; then
+    rm -f "$log"
+    aos_resolve_apply
+    return $?
+  fi
+  BOOTSTRAP_ERROR="$(tail -n 1 "$log" 2>/dev/null || true)"
+  rm -f "$log"
+  return 1
+}
+
+if ! resolve_initial && ! bootstrap_codex; then
+  emit "Unicity AOS is not installed, so this Codex session has no governed AOS tools.
+
+Automatic setup could not complete${BOOTSTRAP_ERROR:+: $BOOTSTRAP_ERROR}.
+Retry with:
+
+    $AOS_PLUGIN_ROOT/bin/aos-install --host codex --yes
+
+Then start a new Codex session."
+  exit 0
+fi
+
 VERSION="$("$AOS" --version 2>/dev/null | head -n1 || true)"
 
-if ! "$AOS" capsule show astrid-mcp --agent "$PRINCIPAL" >/dev/null 2>&1; then
+if ! "$AOS" capsule show aos-mcp --agent "$PRINCIPAL" >/dev/null 2>&1; then
+  if bootstrap_codex \
+    && "$AOS" capsule show aos-mcp --agent "$PRINCIPAL" >/dev/null 2>&1
+  then
+    :
+  else
   emit "Unicity AOS — Codex principal '$PRINCIPAL' is not provisioned for the oracle pack.
 
-Install the signed Codex oracle pack, then start a new Codex session:
+Automatic setup could not complete${BOOTSTRAP_ERROR:+: $BOOTSTRAP_ERROR}.
+Retry with:
 
-    curl -fsSL https://raw.githubusercontent.com/unicity-aos/oracles/main/install.sh | sh -s -- --host codex
+    $AOS_PLUGIN_ROOT/bin/aos-install --host codex --yes
 
-The base AOS installation alone does not add the host broker capsules."
-  exit 0
+Then start a new Codex session."
+    exit 0
+  fi
 fi
 
 STATUS="$("$AOS" status --json 2>/dev/null || true)"
 
-if [ -z "$STATUS" ] || ! printf '%s' "$STATUS" | grep -Eq '"state"[[:space:]]*:[[:space:]]*"running"'; then
-  emit "Unicity AOS — Codex principal '$PRINCIPAL'.
+if [ -n "$STATUS" ] \
+  && printf '%s' "$STATUS" | grep -Eq '"state"[[:space:]]*:[[:space:]]*"running"'
+then
+  if ! printf '%s' "$STATUS" | grep -Eq '"loaded_capsules"[[:space:]]*:[[:space:]]*\[[^]]*"aos-mcp"'; then
+    emit "Unicity AOS — Codex principal '$PRINCIPAL' is provisioned, but its broker is not loaded.
 
-The AOS runtime is not reachable yet. The MCP adapter normally starts it on
-demand. If tools do not appear, run:
-
-    aos start
-
-Then reconnect the Unicity AOS MCP server."
-  exit 0
-fi
-
-if ! printf '%s' "$STATUS" | grep -Eq '"loaded_capsules"[[:space:]]*:[[:space:]]*\[[^]]*"astrid-mcp"'; then
-  emit "Unicity AOS — Codex principal '$PRINCIPAL' is provisioned, but its broker is not loaded.
-
-The runtime is reachable, but astrid-mcp is absent from the live capsule set.
+The runtime is reachable, but aos-mcp is absent from the live capsule set.
 Stop and restart the product runtime once, then reconnect this MCP server:
 
     aos stop
 
 The next AOS command starts the current signed fleet."
-  exit 0
+    exit 0
+  fi
+
+  if command -v jq >/dev/null 2>&1; then
+    PIDLINE="PID $(printf '%s' "$STATUS" | jq -r '.pid // "unknown"' 2>/dev/null || printf unknown)"
+    CAPCOUNT="Capsules: $(printf '%s' "$STATUS" | jq -r '.loaded_capsules | length' 2>/dev/null || printf unknown) loaded"
+  else
+    PIDLINE="PID $(printf '%s' "$STATUS" | sed -n 's/.*"pid"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p')"
+    CAPCOUNT="Capsules: live inventory includes aos-mcp"
+  fi
+else
+  PIDLINE="starts on MCP connect"
+  CAPCOUNT="Capsules: aos-mcp provisioned"
 fi
 
-if command -v jq >/dev/null 2>&1; then
-  PIDLINE="PID $(printf '%s' "$STATUS" | jq -r '.pid // "unknown"' 2>/dev/null || printf unknown)"
-  CAPCOUNT="Capsules: $(printf '%s' "$STATUS" | jq -r '.loaded_capsules | length' 2>/dev/null || printf unknown) loaded"
-else
-  PIDLINE="PID $(printf '%s' "$STATUS" | sed -n 's/.*"pid"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p')"
-  CAPCOUNT="Capsules: live inventory includes astrid-mcp"
+if [ -x "$AOS_PLUGIN_ROOT/bin/aos-update-check" ]; then
+  NUDGE_MSG=$("$AOS_PLUGIN_ROOT/bin/aos-update-check" "$AOS" 2>/dev/null || true)
 fi
 
 emit "Unicity AOS is ready for this Codex session.

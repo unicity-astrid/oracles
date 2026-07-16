@@ -138,7 +138,7 @@ jobs:
           set -euo pipefail
           mkdir -p artifacts
           for crate in \
-            astrid-mcp \
+            aos-mcp \
             claude-runner claude-install \
             codex-runner codex-install
           do
@@ -193,13 +193,13 @@ jobs:
           cd artifacts
           {
             printf '%s\n' \
-              astrid-mcp.capsule \
+              aos-mcp.capsule \
               claude-install.capsule claude-runner.capsule \
               codex-install.capsule codex-runner.capsule \
               claude-pack.toml codex-pack.toml grok-pack.toml \
               aos-oracle-plugins.tar.gz BLAKE3SUMS.txt runtime-compatibility.toml
             for asset in \
-              astrid-mcp.capsule \
+              aos-mcp.capsule \
               claude-install.capsule claude-runner.capsule \
               codex-install.capsule codex-runner.capsule \
               claude-pack.toml codex-pack.toml grok-pack.toml \

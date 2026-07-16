@@ -257,7 +257,7 @@ fn argv(
         // `.mcp.json`; `--mcp-config` then points it at the single file
         // claude-install authored under the principal's HOME, whose `aos`
         // server is `aos mcp serve` (the rmcp stdio shim onto the
-        // astrid-mcp broker — astrid-runtime/astrid#880). claude does the
+        // aos-mcp broker — astrid-runtime/astrid#880). claude does the
         // native MCP handshake against it and discovers the `mcp__aos__*`
         // tools from `tools/list`, then executes them DIRECTLY against that
         // server over MCP — the runner never sees or dispatches the calls. The
@@ -311,7 +311,7 @@ fn argv(
         // The registered `aos mcp serve` MCP server (`--mcp-config`
         // above) stays available for Astrid-specific operations
         // (`mcp__aos__*`), but it is no longer the EXCLUSIVE surface —
-        // Claude's native tools are primary. The astrid-mcp broker still
+        // Claude's native tools are primary. The aos-mcp broker still
         // enforces capability checks + the argument-level policy gate
         // (`policy::evaluate`) on any `mcp__aos__*` call.
         // -p only: skip writing claude's own session JSONL. Source of

@@ -1,6 +1,6 @@
 //! Broker front door — the sanitized `astrid.v1.*` MCP surface.
 //!
-//! This is astrid-mcp's SECOND front door, sitting over the SAME
+//! This is aos-mcp's SECOND front door, sitting over the SAME
 //! discovery ([`crate::discovery`]) and execute ([`crate::execute`])
 //! internals as the agent-runner path. Where the agent path serves the
 //! `mcp__aos__*` namespace Claude consumes via `--allowed-tools`, the
@@ -49,7 +49,7 @@
 //! under the per-(principal, source_id) KV key `mcp.ingress.trust.<source_id>`
 //! (see [`crate::execute::is_ingress_trusted`] and
 //! [`crate::approval::handle_mcp_ingress_respond`]). This stops a non-ingress
-//! capsule from puppeting astrid-mcp into executing tools on a principal's
+//! capsule from puppeting aos-mcp into executing tools on a principal's
 //! behalf without a human ever consenting to it. [`handle_mcp_list`] is
 //! read-only (it returns the public tool surface the proxy already publishes)
 //! and is NOT gated as strictly. See [`crate::execute::is_ingress_trusted`]

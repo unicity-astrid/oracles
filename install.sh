@@ -15,8 +15,7 @@ COSIGN_VERSION=v3.1.1
 ASSUME_YES=0
 ALL_HOSTS=0
 NO_INSTALL_AOS=0
-NO_MIGRATE_PROMPT=0
-OFFLINE=0
+SKIP_HOST_PLUGIN=0
 REQUESTED_HOSTS=""
 LOCAL_ASSETS="${AOS_ORACLE_ASSETS:-}"
 WORK=""
@@ -67,17 +66,16 @@ Usage: install.sh [options]
 
   --host HOST       install claude, codex, or grok (repeatable)
   --all             install every supported host
-  --yes, -y         non-interactive; fresh CE profiles need OPENAI_API_KEY
+  --yes, -y         non-interactive host-pack provisioning
   --oracle-version V exact signed oracle pack version (default: 0.2.0)
   --aos-channel C   install/follow the AOS stable, dev, or nightly channel
   --aos-version V   install an exact AOS calendar-semver release
   --local-assets D  use locally built capsules and pack manifests for testing
-  --offline         initialize CE without update-network access
-  --no-migrate-prompt
-                    do not offer the optional Astrid state-import prompt
   --claude-auth M   api_key or subscription (non-interactive Claude setup)
   --claude-mode M   headless or repl (non-interactive Claude setup)
   --no-install-aos  fail instead of invoking the canonical AOS installer
+  --skip-host-plugin
+                     provision capsules/receipt without reinstalling the active host plugin
   -h, --help
 EOF
 }
@@ -109,8 +107,6 @@ while [ "$#" -gt 0 ]; do
       shift
       LOCAL_ASSETS="${1:-}"
       ;;
-    --offline) OFFLINE=1 ;;
-    --no-migrate-prompt) NO_MIGRATE_PROMPT=1 ;;
     --claude-auth)
       shift
       CLAUDE_AUTH_MODE="${1:-}"
@@ -120,6 +116,7 @@ while [ "$#" -gt 0 ]; do
       CLAUDE_INTERACTION_MODE="${1:-}"
       ;;
     --no-install-aos) NO_INSTALL_AOS=1 ;;
+    --skip-host-plugin) SKIP_HOST_PLUGIN=1 ;;
     -h|--help) usage; exit 0 ;;
     *) die "unknown argument '$1'" ;;
   esac
@@ -180,7 +177,14 @@ ensure_b3sum() {
     B3SUM=$(command -v b3sum)
     return
   fi
-  die "b3sum is required to verify signed oracle release checksums"
+  if [ -n "$LOCAL_ASSETS" ]; then
+    die "b3sum is required to verify unsigned local oracle assets"
+  fi
+  # Every downloaded release asset is independently verified by Sigstore
+  # against the pinned release-workflow identity. BLAKE3 is an additional
+  # byte-for-byte check when b3sum is available, not an installation
+  # prerequisite for an otherwise authenticated release.
+  B3SUM=""
 }
 
 blake3_file() {
@@ -239,7 +243,16 @@ calendar_version_at_least() {
 }
 
 ensure_aos() {
-  if have aos && [ -z "$AOS_CHANNEL" ] && [ -z "$AOS_VERSION" ]; then return 0; fi
+  if [ -x "$AOS_HOME_DIR/bin/aos" ] && [ -z "$AOS_CHANNEL" ] && [ -z "$AOS_VERSION" ]; then
+    PATH="$AOS_HOME_DIR/bin:$PATH"
+    export PATH
+    return 0
+  fi
+  if [ "$NO_INSTALL_AOS" -eq 1 ] && have aos \
+    && [ -z "$AOS_CHANNEL" ] && [ -z "$AOS_VERSION" ]
+  then
+    return 0
+  fi
   [ "$NO_INSTALL_AOS" -eq 0 ] || die "Unicity AOS is required; run $AOS_INSTALL_URL"
   have curl || die "curl is required to install Unicity AOS"
   WORK=${WORK:-$(mktemp -d 2>/dev/null || mktemp -d -t aos-oracles)}
@@ -249,9 +262,6 @@ ensure_aos() {
   chmod 700 "$installer"
   set -- "$installer"
   [ "$ASSUME_YES" -eq 0 ] || set -- "$@" --yes
-  if [ "$NO_MIGRATE_PROMPT" -eq 1 ] || [ "$ASSUME_YES" -eq 1 ]; then
-    set -- "$@" --no-migrate-prompt
-  fi
   [ -z "$AOS_CHANNEL" ] || set -- "$@" --channel "$AOS_CHANNEL"
   [ -z "$AOS_VERSION" ] || set -- "$@" --version "$AOS_VERSION"
   sh "$@"
@@ -259,7 +269,10 @@ ensure_aos() {
     PATH="$AOS_HOME_DIR/bin:$PATH"
     export PATH
   fi
-  have aos || die "AOS installed but 'aos' is not on PATH; start a new shell and retry"
+  [ -x "$AOS_HOME_DIR/bin/aos" ] \
+    || die "AOS installer did not provision $AOS_HOME_DIR/bin/aos"
+  PATH="$AOS_HOME_DIR/bin:$PATH"
+  export PATH
   if [ -n "$AOS_VERSION" ]; then
     installed=$(aos --version | awk 'NF { value = $NF } END { print value }')
     [ "$installed" = "$AOS_VERSION" ] \
@@ -277,32 +290,24 @@ detect_hosts() {
   printf '%s\n' "$found"
 }
 
-run_init() {
-  target="${1:-}"
-  set -- aos --principal default init
-  [ -z "$target" ] || set -- "$@" --target-principal "$target"
-  [ "$OFFLINE" -eq 0 ] || set -- "$@" --offline
-  if [ "$ASSUME_YES" -eq 1 ]; then
-    set -- "$@" --yes
-    if [ -n "${OPENAI_API_KEY:-}" ]; then
-      ASTRID_VAR_OPENAI_API_KEY="$OPENAI_API_KEY" "$@"
-    else
-      "$@"
-    fi
-  elif [ -r /dev/tty ]; then
-    "$@" </dev/tty
-  else
-    "$@"
-  fi
-}
-
 daemon_is_live() {
   aos status --json >/dev/null 2>&1
 }
 
 ensure_base() {
   if ! daemon_is_live; then STARTED_DAEMON=1; fi
-  run_init ""
+  profile="$AOS_HOME_DIR/runtime/etc/profiles/default.toml"
+  if [ ! -f "$profile" ]; then
+    say "Initializing Unicity CE..."
+    if [ "$ASSUME_YES" -eq 1 ]; then
+      aos --principal default init --yes --offline </dev/null
+    elif [ -r /dev/tty ]; then
+      aos --principal default init --offline </dev/tty
+    else
+      aos --principal default init --offline
+    fi
+    [ -f "$profile" ] || die "Unicity CE initialization did not create the default product profile"
+  fi
 }
 
 principal_for() {
@@ -315,9 +320,9 @@ principal_for() {
 
 capsules_for() {
   case "$1" in
-    claude) printf '%s\n' astrid-mcp claude-install claude-runner ;;
-    codex) printf '%s\n' astrid-mcp codex-install codex-runner ;;
-    grok) printf '%s\n' astrid-mcp ;;
+    claude) printf '%s\n' aos-mcp claude-install claude-runner ;;
+    codex) printf '%s\n' aos-mcp codex-install codex-runner ;;
+    grok) printf '%s\n' aos-mcp ;;
   esac
 }
 
@@ -331,9 +336,25 @@ ensure_principal() {
   fi
   if ! aos --principal default agent show "$principal" >/dev/null 2>&1; then
     aos --principal default agent create "$principal" --group "$host" \
-      --inherit-from default --yes >/dev/null
+      --yes >/dev/null
   fi
-  run_init "$principal"
+}
+
+ensure_product_for_principal() {
+  principal=$1
+  if ! aos capsule show aos-cli --agent "$principal" >/dev/null 2>&1; then
+    if [ "$ASSUME_YES" -eq 1 ]; then
+      aos --principal default init --target-principal "$principal" \
+        --yes --offline </dev/null
+    elif [ -r /dev/tty ]; then
+      aos --principal default init --target-principal "$principal" \
+        --offline </dev/tty
+    else
+      aos --principal default init --target-principal "$principal" --offline
+    fi
+    aos capsule show aos-cli --agent "$principal" >/dev/null 2>&1 \
+      || die "Unicity CE was not provisioned for $principal"
+  fi
 }
 
 ensure_cosign() {
@@ -390,7 +411,7 @@ validate_checksum_manifest() {
   fi
   while IFS= read -r name; do
     case "$name" in
-      astrid-mcp.capsule|\
+      aos-mcp.capsule|\
       claude-install.capsule|claude-pack.toml|claude-runner.capsule|\
       codex-install.capsule|codex-pack.toml|codex-runner.capsule|\
       grok-pack.toml|aos-oracle-plugins.tar.gz|runtime-compatibility.toml) ;;
@@ -410,6 +431,7 @@ verify_blake3() {
   name=$2
   expected=$(expected_blake3 "$name") \
     || die "release checksum manifest has no digest for $name"
+  [ -n "$B3SUM" ] || return 0
   actual=$(blake3_file "$path")
   printf '%s\n' "$actual" | grep -Eq '^[0-9a-f]{64}$' \
     || die "b3sum returned an invalid digest for $name"
@@ -547,10 +569,11 @@ stage_pack() {
 install_pack() {
   host=$1
   principal=$(principal_for "$host")
-  ensure_principal "$host" "$principal"
   stage_pack "$host"
   stage=$STAGED_PACK
   validate_pack "$host" "$principal" "$stage/Pack.toml"
+  ensure_principal "$host" "$principal"
+  ensure_product_for_principal "$principal"
 
   for capsule in $(capsules_for "$host"); do
     if [ "$ASSUME_YES" -eq 1 ]; then
@@ -558,13 +581,13 @@ install_pack() {
         if [ "$CLAUDE_AUTH_MODE" = api_key ] && [ -z "${ANTHROPIC_API_KEY:-}" ]; then
           die "ANTHROPIC_API_KEY is required for --yes --host claude with --claude-auth api_key"
         fi
-        ASTRID_VAR_INTERACTION_MODE="$CLAUDE_INTERACTION_MODE" \
-          ASTRID_VAR_AUTH_MODE="$CLAUDE_AUTH_MODE" \
-          ASTRID_VAR_API_KEY="${ANTHROPIC_API_KEY:-}" \
+        AOS_VAR_INTERACTION_MODE="$CLAUDE_INTERACTION_MODE" \
+          AOS_VAR_AUTH_MODE="$CLAUDE_AUTH_MODE" \
+          AOS_VAR_API_KEY="${ANTHROPIC_API_KEY:-}" \
           aos --principal "$principal" capsule install \
-            "$stage/$capsule.capsule" --yes
+            "$stage/$capsule.capsule" </dev/null
       else
-        aos --principal "$principal" capsule install "$stage/$capsule.capsule" --yes
+        aos --principal "$principal" capsule install "$stage/$capsule.capsule" </dev/null
       fi
     elif [ -r /dev/tty ]; then
       aos --principal "$principal" capsule install "$stage/$capsule.capsule" </dev/tty
@@ -589,7 +612,6 @@ install_plugin() {
       claude plugin marketplace remove unicity-aos-oracles >/dev/null 2>&1 || true
       claude plugin marketplace add "$PLUGIN_SNAPSHOT" >/dev/null
       claude plugin install unicity-aos@unicity-aos-oracles >/dev/null
-      claude plugin uninstall astrid@astrid-oracles >/dev/null 2>&1 || true
       ;;
     codex)
       have codex || die "Codex is not installed"
@@ -602,12 +624,10 @@ install_plugin() {
         codex plugin marketplace add "$PLUGIN_SNAPSHOT" >/dev/null
       fi
       codex plugin add unicity-aos@unicity-aos-oracles >/dev/null
-      codex plugin remove astrid@astrid-oracles >/dev/null 2>&1 || true
       ;;
     grok)
       have grok || die "Grok Build is not installed"
       grok plugin install "$PLUGIN_SNAPSHOT/plugins/grok" --trust >/dev/null
-      grok plugin uninstall astrid >/dev/null 2>&1 || true
       ;;
   esac
   say "✓ $host marketplace plugin installed"
@@ -683,7 +703,9 @@ ensure_base
 for host in $hosts; do
   install_pack "$host"
   prepare_plugin_snapshot
-  install_plugin "$host"
+  if [ "$SKIP_HOST_PLUGIN" -eq 0 ]; then
+    install_plugin "$host"
+  fi
   write_receipt "$host" "$(principal_for "$host")" "$STAGED_PACK"
 done
 

@@ -273,7 +273,7 @@ pub(crate) fn dispatch_with_approval(
 /// `astrid.v1.approval` is a single global broadcast topic carrying no
 /// `call_id` / `tool_name`. Correctness here rests on the engine serialising
 /// guest calls per capsule instance behind the store mutex: this dispatch
-/// holds that lock for its whole drain, so no other astrid-mcp `handle_mcp_call`
+/// holds that lock for its whole drain, so no other aos-mcp `handle_mcp_call`
 /// can be watching the topic concurrently. The only signal we can observe
 /// during our window is the one OUR OWN routed tool raised — see the
 /// "Concurrency / correlation" note in [`crate::approval`]. The decision is
