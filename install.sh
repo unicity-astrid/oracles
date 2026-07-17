@@ -295,25 +295,27 @@ ensure_aos() {
   have curl || die "curl is required to install Unicity AOS"
   WORK=${WORK:-$(mktemp -d 2>/dev/null || mktemp -d -t aos-oracles)}
   installer="$WORK/aos-install.sh"
-  case "$AOS_INSTALL_URL" in
-    /*)
-      [ -f "$AOS_INSTALL_URL" ] && [ ! -L "$AOS_INSTALL_URL" ] \
-        || die "local AOS installer is not a regular file: $AOS_INSTALL_URL"
-      cp "$AOS_INSTALL_URL" "$installer"
-      ;;
-    file://*)
-      local_installer=${AOS_INSTALL_URL#file://}
-      [ -f "$local_installer" ] && [ ! -L "$local_installer" ] \
-        || die "local AOS installer is not a regular file: $local_installer"
-      cp "$local_installer" "$installer"
-      ;;
-    *)
-      curl -fsSL --max-time 60 "$AOS_INSTALL_URL" -o "$installer" \
-        || die "could not download the canonical AOS installer"
-      ;;
-  esac
+  if [ -f "$AOS_INSTALL_URL" ] && [ ! -L "$AOS_INSTALL_URL" ]; then
+    cp "$AOS_INSTALL_URL" "$installer"
+  else
+    case "$AOS_INSTALL_URL" in
+      /*)
+        die "local AOS installer is not a regular file: $AOS_INSTALL_URL"
+        ;;
+      file://*)
+        local_installer=${AOS_INSTALL_URL#file://}
+        [ -f "$local_installer" ] && [ ! -L "$local_installer" ] \
+          || die "local AOS installer is not a regular file: $local_installer"
+        cp "$local_installer" "$installer"
+        ;;
+      *)
+        curl -fsSL --max-time 60 "$AOS_INSTALL_URL" -o "$installer" \
+          || die "could not download the canonical AOS installer"
+        ;;
+    esac
+  fi
   chmod 700 "$installer"
-  set -- "$installer" --no-migrate-prompt
+  set -- "$installer"
   [ "$ASSUME_YES" -eq 0 ] || set -- "$@" --yes
   [ -z "$AOS_CHANNEL" ] || set -- "$@" --channel "$AOS_CHANNEL"
   [ -z "$AOS_VERSION" ] || set -- "$@" --version "$AOS_VERSION"
