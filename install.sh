@@ -34,11 +34,20 @@ say() { printf '%s\n' "$*"; }
 die() { say "aos-oracles: $*" >&2; exit 1; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
-cleanup() {
-  if [ "$LOCK_HELD" -eq 1 ] && [ -n "$INSTALL_LOCK" ]; then
+release_install_lock() {
+  [ "$LOCK_HELD" -eq 1 ] && [ -n "$INSTALL_LOCK" ] || return 0
+  owner=""
+  if [ -f "$INSTALL_LOCK/pid" ] && [ ! -L "$INSTALL_LOCK/pid" ] \
+    && IFS= read -r owner < "$INSTALL_LOCK/pid" \
+    && [ "$owner" = "$$" ]
+  then
     rm -rf "$INSTALL_LOCK"
-    LOCK_HELD=0
   fi
+  LOCK_HELD=0
+}
+
+cleanup() {
+  release_install_lock
   [ -z "$PLUGIN_STAGE" ] || rm -rf "$PLUGIN_STAGE"
   [ -z "$RECEIPT_STAGE" ] || rm -rf "$RECEIPT_STAGE"
   [ -z "$WORK" ] || rm -rf "$WORK"
@@ -190,17 +199,41 @@ blake3_file() {
 acquire_install_lock() {
   lock_root="$AOS_HOME_DIR/extensions/oracles"
   INSTALL_LOCK="$lock_root/.install.lock"
+  for lock_parent in "$AOS_HOME_DIR" "$AOS_HOME_DIR/extensions" "$lock_root"; do
+    [ ! -L "$lock_parent" ] || die "refusing symlinked install lock path: $lock_parent"
+  done
   mkdir -p "$lock_root"
+  chmod 700 "$AOS_HOME_DIR" "$AOS_HOME_DIR/extensions" "$lock_root"
+  [ ! -L "$INSTALL_LOCK" ] || die "refusing symlinked oracle install lock"
   if ! mkdir "$INSTALL_LOCK" 2>/dev/null; then
     owner=""
-    [ ! -r "$INSTALL_LOCK/pid" ] || owner=$(cat "$INSTALL_LOCK/pid" 2>/dev/null || true)
-    if [ -n "$owner" ]; then
+    if [ -f "$INSTALL_LOCK/pid" ] && [ ! -L "$INSTALL_LOCK/pid" ] \
+      && IFS= read -r owner < "$INSTALL_LOCK/pid" \
+      && printf '%s\n' "$owner" | grep -Eq '^[1-9][0-9]*$' \
+      && ! kill -0 "$owner" 2>/dev/null
+    then
+      stale_lock="${INSTALL_LOCK}.stale.$$"
+      [ ! -e "$stale_lock" ] && [ ! -L "$stale_lock" ] \
+        || die "could not reclaim stale oracle install lock"
+      mv "$INSTALL_LOCK" "$stale_lock" 2>/dev/null \
+        || die "another oracle installation is active for $AOS_HOME_DIR"
+      rm -rf "$stale_lock"
+      mkdir "$INSTALL_LOCK" 2>/dev/null \
+        || die "another oracle installation is active for $AOS_HOME_DIR"
+    elif [ -n "$owner" ]; then
       die "another oracle installation is active for $AOS_HOME_DIR (pid $owner)"
+    else
+      die "another oracle installation is active for $AOS_HOME_DIR"
     fi
-    die "another oracle installation is active for $AOS_HOME_DIR"
   fi
   LOCK_HELD=1
-  printf '%s\n' "$$" > "$INSTALL_LOCK/pid"
+  if ! printf '%s\n' "$$" > "$INSTALL_LOCK/pid"; then
+    rm -rf "$INSTALL_LOCK"
+    LOCK_HELD=0
+    die "could not record oracle install lock owner"
+  fi
+  chmod 600 "$INSTALL_LOCK/pid" \
+    || die "could not secure oracle install lock owner"
 }
 
 atomic_symlink() {
@@ -699,8 +732,8 @@ ensure_b3sum
 hosts=$(detect_hosts)
 [ -n "$(printf '%s' "$hosts" | tr -d ' ')" ] \
   || die "no supported host detected; pass --host claude, --host codex, or --host grok"
-ensure_aos
 acquire_install_lock
+ensure_aos
 stage_release_metadata
 ensure_base
 for host in $hosts; do

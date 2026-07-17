@@ -2,9 +2,10 @@
 # Start the Unicity AOS MCP endpoint for one host principal.
 #
 # `aos --principal <name> mcp serve` owns authenticated runtime startup and
-# quiet-starts the bundled ephemeral daemon when necessary. This wrapper does
-# not provision principals, install capsules, or reach into the private runtime.
-# stdout belongs exclusively to the MCP JSON-RPC transport.
+# quiet-starts the bundled ephemeral daemon when necessary. On a blank slate,
+# this process starts host-scoped provisioning in the background and waits for
+# its pack to commit. SessionStart uses the same idempotent installer. stdout
+# belongs exclusively to the MCP JSON-RPC transport.
 set -eu
 
 log() { printf 'aos-up: %s\n' "$*" >&2; }
@@ -34,18 +35,112 @@ fi
 # shellcheck source=lib-aos-resolve.sh
 . "$RESOLVE"
 
-if ! aos_resolve_apply; then
-  INSTALLER="$AOS_PLUGIN_ROOT/bin/aos-install"
-  log "could not find the Unicity AOS command."
-  log "looked at AOS_BIN, AOS_HOME/bin/aos, this plugin's .mcp.json, ~/.aos/bin/aos, and PATH."
-  if [ -x "$INSTALLER" ]; then
-    log "install and provision this host explicitly, then reconnect the MCP server:"
-    log "    $INSTALLER --host $AOS_HOST"
-  else
-    log "install AOS from https://aos.unicity.ai/install.sh, then provision the $AOS_HOST oracle plugin."
+AOS_HOME_DIR="${AOS_HOME:-$HOME/.aos}"
+PACK_RECEIPT="$AOS_HOME_DIR/extensions/oracles/$AOS_HOST/Pack.lock"
+INSTALL_LOCK="$AOS_HOME_DIR/extensions/oracles/.install.lock"
+INSTALLER="$AOS_PLUGIN_ROOT/bin/aos-install"
+BOOTSTRAP_LOG=""
+BOOTSTRAP_PID=""
+BOOTSTRAP_ATTEMPTED=0
+WAITING_FOR_INSTALL_LOCK=0
+STARTUP_TIMEOUT_SECS="${AOS_MCP_STARTUP_TIMEOUT_SECS:-300}"
+case "$STARTUP_TIMEOUT_SECS" in
+  ''|*[!0-9]*) log "AOS_MCP_STARTUP_TIMEOUT_SECS must be a positive integer"; exit 2 ;;
+  0) log "AOS_MCP_STARTUP_TIMEOUT_SECS must be greater than zero"; exit 2 ;;
+esac
+
+host_ready() {
+  [ -r "$PACK_RECEIPT" ] && aos_resolve_apply 2>/dev/null
+}
+
+install_lock_reclaimable() {
+  owner=""
+  [ -f "$INSTALL_LOCK/pid" ] && [ ! -L "$INSTALL_LOCK/pid" ] \
+    && IFS= read -r owner < "$INSTALL_LOCK/pid" \
+    && printf '%s\n' "$owner" | grep -Eq '^[1-9][0-9]*$' \
+    && ! kill -0 "$owner" 2>/dev/null
+}
+
+start_bootstrap() {
+  [ "$BOOTSTRAP_ATTEMPTED" -eq 0 ] || return 0
+  if [ "$WAITING_FOR_INSTALL_LOCK" -eq 1 ]; then
+    if [ -d "$INSTALL_LOCK" ] && ! install_lock_reclaimable; then
+      return 0
+    fi
+    WAITING_FOR_INSTALL_LOCK=0
   fi
-  exit 127
+  [ -x "$INSTALLER" ] || return 1
+
+  log_dir="$AOS_HOME_DIR/cache/oracles"
+  mkdir -p "$log_dir"
+  chmod 700 "$log_dir"
+  find "$log_dir" -type f -name "$AOS_HOST-bootstrap.log.*" -mtime +7 \
+    -exec rm -f {} \; 2>/dev/null || true
+  if [ -z "$BOOTSTRAP_LOG" ]; then
+    BOOTSTRAP_LOG=$(mktemp "$log_dir/$AOS_HOST-bootstrap.log.XXXXXX") \
+      || return 1
+  else
+    : > "$BOOTSTRAP_LOG"
+  fi
+  set -- --host "$AOS_HOST" --yes
+  if [ "$AOS_HOST" = claude ] && [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+    set -- "$@" --claude-auth subscription --claude-mode repl
+  fi
+  AOS_HOST="$AOS_HOST" "$INSTALLER" "$@" </dev/null >>"$BOOTSTRAP_LOG" 2>&1 &
+  BOOTSTRAP_PID=$!
+  BOOTSTRAP_ATTEMPTED=1
+}
+
+bootstrap_failed() {
+  [ -n "$BOOTSTRAP_PID" ] || return 1
+  kill -0 "$BOOTSTRAP_PID" 2>/dev/null && return 1
+
+  status=0
+  wait "$BOOTSTRAP_PID" || status=$?
+  BOOTSTRAP_PID=""
+  [ "$status" -eq 0 ] && return 1
+
+  last_error=$(tail -n 1 "$BOOTSTRAP_LOG" 2>/dev/null || true)
+  case "$last_error" in
+    *"another oracle installation is active"*)
+      BOOTSTRAP_ATTEMPTED=0
+      WAITING_FOR_INSTALL_LOCK=1
+      return 1
+      ;;
+  esac
+  log "automatic $AOS_HOST provisioning failed${last_error:+: $last_error}"
+  log "diagnostics: $BOOTSTRAP_LOG"
+  return 0
+}
+
+if ! host_ready; then
+  if ! start_bootstrap; then
+    log "could not find this plugin's AOS installer."
+    log "install AOS from https://aos.unicity.ai/install.sh, then provision the $AOS_HOST oracle pack."
+    exit 127
+  fi
+  deadline=$(($(date +%s) + STARTUP_TIMEOUT_SECS))
+  while ! host_ready; do
+    if bootstrap_failed; then
+      log "retry with: $INSTALLER --host $AOS_HOST --yes"
+      exit 1
+    fi
+    start_bootstrap || true
+    if [ "$(date +%s)" -ge "$deadline" ]; then
+      log "startup timed out waiting for the $AOS_HOST oracle pack and Unicity AOS command."
+      log "provisioning continues independently; reconnect the MCP server when it completes."
+      log "diagnostics: $BOOTSTRAP_LOG"
+      exit 1
+    fi
+    sleep 0.1
+  done
 fi
+
+if [ -n "$BOOTSTRAP_PID" ]; then
+  wait "$BOOTSTRAP_PID" 2>/dev/null || true
+  BOOTSTRAP_PID=""
+fi
+[ -z "$BOOTSTRAP_LOG" ] || rm -f "$BOOTSTRAP_LOG"
 
 PRINCIPAL=""
 if [ "${1:-}" = "--principal" ]; then
@@ -58,6 +153,6 @@ case "$PRINCIPAL" in
 esac
 
 # AOS owns daemon startup, runtime keys, authentication, and home selection.
-# Any missing principal/capsule failure remains visible on stderr with the
-# product CLI's recovery guidance; this no-TTY transport never mutates setup.
+# Any post-commit principal/capsule failure remains visible on stderr with the
+# product CLI's recovery guidance.
 exec "$AOS" --principal "$PRINCIPAL" mcp serve "$@"

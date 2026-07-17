@@ -10,7 +10,8 @@ commands, and the optional HUD.
 - `.mcp.json` registers the public `aos` MCP server through `bin/aos-up`.
 - `bin/aos-up` resolves the `aos` product command and executes
   `aos --principal <name> mcp serve`.
-- `bin/aos-doctor` performs read-only readiness checks at session start.
+- `bin/aos-doctor` provisions this host pack on a blank slate, then reports
+  readiness at session start.
 - `/unicity-aos:doctor`, `/unicity-aos:status`, `/unicity-aos:whoami`,
   `/unicity-aos:capsules`, and `/unicity-aos:hud`
   expose operator views.
@@ -19,8 +20,11 @@ commands, and the optional HUD.
 
 The adapter does not start a private daemon itself. The `aos` command owns the
 bundled runtime, authenticated principal selection, and quiet ephemeral startup.
-MCP startup also never installs software, creates principals, or captures
-secrets. Those mutations belong to the explicit installer.
+On a blank slate, the MCP launcher starts the non-interactive host installer in
+the background and waits for the signed Claude pack receipt. SessionStart uses
+the same idempotent installer, so concurrent startup still performs one
+host-scoped installation. Existing installations take the ready path without
+re-entering the installer.
 
 ## Install and provision
 
@@ -56,9 +60,9 @@ runtime command:
 aos --principal claude-code mcp serve
 ```
 
-If the principal or its oracle capsules have not been provisioned, the command
-fails with installer guidance. The MCP wrapper does not silently repair or
-broaden authority.
+On a blank slate, the host-scoped installer creates `claude-code` and installs
+only the Claude oracle pack. Later startup failures remain visible with recovery
+guidance; the wrapper never broadens the principal's authority.
 
 ## Tool boundary
 

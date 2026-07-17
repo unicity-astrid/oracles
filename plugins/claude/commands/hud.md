@@ -1,5 +1,6 @@
 ---
 description: Install or show the Unicity AOS HUD status line.
+allowed-tools: Bash(printf:*)
 ---
 
 The AOS HUD shows this session's principal and governance health in Claude

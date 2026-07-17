@@ -113,68 +113,8 @@ jobs:
             plugins/unicity-aos/bin/aos-install plugins/unicity-aos/bin/aos-update-check \
             plugins/unicity-aos/bin/lib-aos-resolve.sh plugins/unicity-aos/install.sh
 
-      - name: Verify aos-up executes its resolve block
-        run: |
-          set -euo pipefail
-          # Regression guard: an unterminated ${...} default (missing brace)
-          # once swallowed the whole resolve block — including sourcing
-          # lib-aos-resolve.sh — into one assignment word, so aos-up
-          # crashed on unbound vars under set -u and the MCP server died on
-          # launch (-32000). `sh -n` still parses that file, so assert
-          # BEHAVIOUR instead: with no aos resolvable anywhere, the
-          # resolve-failure branch must run — exit 127 with its guidance.
-          tmp_home="$(mktemp -d)"
-          trap 'rm -rf "$tmp_home"' EXIT
-          for host in claude grok; do
-            case "$host" in
-              claude) root_var=CLAUDE_PLUGIN_ROOT ;;
-              grok)   root_var=GROK_PLUGIN_ROOT ;;
-            esac
-            rc=0
-            out="$(env -i PATH=/usr/bin:/bin HOME="$tmp_home" AOS_HOME="$tmp_home" \
-              "$root_var=$PWD/plugins/$host" \
-              "plugins/$host/bin/aos-up" </dev/null 2>&1)" || rc=$?
-            if [ "$rc" -ne 127 ]; then
-              echo "::error::plugins/$host/bin/aos-up exited $rc (want 127 from the resolve-failure branch). Output:"
-              printf '%s\n' "$out"
-              exit 1
-            fi
-            printf '%s\n' "$out" | grep -q "could not find the Unicity AOS command" || {
-              echo "::error::plugins/$host/bin/aos-up did not print the resolve-failure guidance. Output:"
-              printf '%s\n' "$out"
-              exit 1
-            }
-            echo "ok $host: resolve block runs (127 + guidance)"
-          done
-
-          # A legacy home must never become a product-command fallback.
-          mkdir -p "$tmp_home/.astrid/bin"
-          ln -s /bin/echo "$tmp_home/.astrid/bin/aos"
-          ln -s /bin/echo "$tmp_home/.astrid/bin/astrid"
-          rc=0
-          out="$(env -i PATH=/usr/bin:/bin HOME="$tmp_home" \
-            CLAUDE_PLUGIN_ROOT="$PWD/plugins/claude" \
-            plugins/claude/bin/aos-up </dev/null 2>&1)" || rc=$?
-          test "$rc" -eq 127
-          printf '%s\n' "$out" | grep -q "could not find the Unicity AOS command"
-
-          # A resolved product command receives the principal before the MCP
-          # command, and no wrapper-owned daemon flags are injected.
-          forwarded="$(AOS_BIN=/bin/echo CLAUDE_PLUGIN_ROOT="$PWD/plugins/claude" \
-            plugins/claude/bin/aos-up --principal claude-code)"
-          test "$forwarded" = "--principal claude-code mcp serve"
-
-          # An explicitly selected AOS_HOME is authoritative: a PATH command
-          # must not silently replace a broken configured installation.
-          mkdir -p "$tmp_home/path-bin" "$tmp_home/explicit-home"
-          ln -s /bin/echo "$tmp_home/path-bin/aos"
-          rc=0
-          out="$(env -i PATH="$tmp_home/path-bin:/usr/bin:/bin" HOME="$tmp_home" \
-            AOS_HOME="$tmp_home/explicit-home" \
-            CLAUDE_PLUGIN_ROOT="$PWD/plugins/claude" \
-            plugins/claude/bin/aos-up </dev/null 2>&1)" || rc=$?
-          test "$rc" -eq 127
-          printf '%s\n' "$out" | grep -q "AOS_HOME is set but does not contain bin/aos"
+      - name: Verify Claude and Grok MCP startup readiness
+        run: python3 scripts/test_host_mcp_startup.py
 
       - name: Verify Unicity AOS Codex plugin
         run: |

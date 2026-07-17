@@ -466,17 +466,28 @@ then
 fi
 grep -Fq 'modified = true' "$receipt"
 
-# The per-home lock fails closed and an unsuccessful contender never removes
+# A live per-home lock fails closed and an unsuccessful contender never removes
 # the active installer's lock.
 locked_home="$home/locked/.aos"
 mkdir -p "$locked_home/extensions/oracles/.install.lock"
-printf '4242\n' > "$locked_home/extensions/oracles/.install.lock/pid"
+sleep 60 &
+live_lock_pid=$!
+printf '%s\n' "$live_lock_pid" > "$locked_home/extensions/oracles/.install.lock/pid"
 if AOS_HOME="$locked_home" \
   "$repo_root/install.sh" --host codex --yes --no-install-aos
 then
   echo "concurrent installer lock was ignored" >&2
+  kill "$live_lock_pid" 2>/dev/null || true
   exit 1
 fi
-test "$(cat "$locked_home/extensions/oracles/.install.lock/pid")" = 4242
+test "$(cat "$locked_home/extensions/oracles/.install.lock/pid")" = "$live_lock_pid"
+kill "$live_lock_pid" 2>/dev/null || true
+wait "$live_lock_pid" 2>/dev/null || true
+
+# A lock whose validated owner no longer exists is reclaimed atomically.
+printf '%s\n' 999999999 > "$locked_home/extensions/oracles/.install.lock/pid"
+AOS_HOME="$locked_home" \
+  "$repo_root/install.sh" --host codex --yes --no-install-aos
+test ! -e "$locked_home/extensions/oracles/.install.lock"
 
 python3 "$repo_root/scripts/test_release_contract.py"
