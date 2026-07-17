@@ -1,7 +1,7 @@
 //! Shared MCP broker for Astrid-governed oracle products.
 //!
 //! Astrid oracle identity is injected via
-//! [`install`](profile::install). The astrid-mcp capsule call `install` then
+//! [`install`](profile::install). The aos-mcp capsule call `install` then
 //! forward host interceptors to the handlers re-exported here.
 //!
 //! The live execution door is the product-neutral `astrid.v1.request.mcp.*`
@@ -24,11 +24,11 @@ mod policy;
 mod profile;
 
 pub use oracle_core::{Host, HostProfile, OracleIdentity};
-pub use profile::{install, install_astrid};
+pub use profile::{install, install_aos};
 
 /// Capsule entry points — product-agnostic once [`install`] has run.
 ///
-/// Interceptor-shaped handlers for the `astrid-mcp` capsule.
+/// Interceptor-shaped handlers for the `aos-mcp` capsule.
 pub mod handlers {
     use astrid_sdk::prelude::*;
 

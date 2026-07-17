@@ -1,0 +1,54 @@
+#!/usr/bin/env sh
+# Best-effort cached Unicity AOS/CE update notification for host startup.
+set -eu
+
+AOS=${1:-aos}
+AOS_HOME_DIR=${AOS_HOME:-$HOME/.aos}
+state="$AOS_HOME_DIR/update/host-update-check"
+stamp="$state/stamp"
+cache="$state/available"
+lock="$state/lock"
+mkdir -p "$state" 2>/dev/null || exit 0
+
+if [ -e "$stamp" ] && [ -n "$(find "$stamp" -mmin -1440 2>/dev/null || true)" ]; then
+  [ ! -s "$cache" ] || cat "$cache"
+  exit 0
+fi
+
+if ! mkdir "$lock" 2>/dev/null; then
+  [ ! -s "$cache" ] || cat "$cache"
+  exit 0
+fi
+trap 'rm -rf "$lock"; rm -f "${tmp:-}"' EXIT HUP INT TERM
+touch "$stamp" 2>/dev/null || true
+tmp="${TMPDIR:-/tmp}/aos-update-check.$$"
+: > "$cache"
+
+run_bounded() {
+  if command -v timeout >/dev/null 2>&1; then
+    timeout 8 "$@" >"$tmp" 2>/dev/null
+    return $?
+  fi
+  "$@" >"$tmp" 2>/dev/null &
+  pid=$!
+  elapsed=0
+  while [ "$elapsed" -lt 8 ]; do
+    kill -0 "$pid" 2>/dev/null || { wait "$pid"; return $?; }
+    sleep 1
+    elapsed=$((elapsed + 1))
+  done
+  kill "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+  return 124
+}
+
+if run_bounded "$AOS" update --check; then
+  line=$(grep -m1 '^Update available' "$tmp" 2>/dev/null || true)
+  if [ -n "$line" ]; then
+    printf '%s\n' "$line" > "$cache"
+  else
+    : > "$cache"
+  fi
+fi
+
+[ ! -s "$cache" ] || cat "$cache"

@@ -1,0 +1,112 @@
+#!/usr/bin/env sh
+# Idempotent Unicity AOS + oracle provisioning entrypoint for host plugins.
+set -eu
+
+log() { printf 'aos-install: %s\n' "$*" >&2; }
+die() { log "ERROR: $*"; exit 1; }
+
+if [ -z "${AOS_HOST:-}" ]; then
+  if [ -n "${CODEX_PLUGIN_ROOT:-}" ]; then
+    AOS_HOST=codex
+  elif [ -n "${GROK_PLUGIN_ROOT:-}" ]; then
+    AOS_HOST=grok
+  else
+    AOS_HOST=claude
+  fi
+fi
+
+INSTALL_URL="${AOS_ORACLES_INSTALL_URL:-https://raw.githubusercontent.com/unicity-aos/oracles/main/install.sh}"
+LOCAL_INSTALLER="${AOS_ORACLES_INSTALLER:-}"
+HOST="$AOS_HOST"
+ASSUME_YES=0
+AOS_CHANNEL=""
+AOS_VERSION=""
+ORACLE_VERSION=""
+CLAUDE_AUTH=""
+CLAUDE_MODE=""
+
+usage() {
+  cat >&2 <<'USAGE'
+aos-install — install Unicity AOS and provision an oracle host plugin.
+
+Usage: aos-install [--host claude|codex|grok] [installer options]
+
+  --aos-channel C      follow the AOS stable, dev, or nightly channel
+  --aos-version V      install an exact AOS calendar-semver release
+  --oracle-version V   install an exact signed oracle-pack release
+  --claude-auth M      api_key or subscription
+  --claude-mode M      headless or repl
+  --yes, -y            non-interactive provisioning
+
+It installs the signed AOS base when needed and provisions only the selected
+host pack. Existing host packs and principals are left unchanged.
+USAGE
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --host)
+      shift
+      HOST="${1:-}"
+      [ -n "$HOST" ] || die "--host needs claude, codex, or grok"
+      ;;
+    -y|--yes) ASSUME_YES=1 ;;
+    --aos-channel)
+      shift
+      AOS_CHANNEL="${1:-}"
+      [ -n "$AOS_CHANNEL" ] || die "--aos-channel needs stable, dev, or nightly"
+      ;;
+    --aos-version)
+      shift
+      AOS_VERSION="${1:-}"
+      [ -n "$AOS_VERSION" ] || die "--aos-version needs a calendar-semver release"
+      ;;
+    --oracle-version)
+      shift
+      ORACLE_VERSION="${1:-}"
+      [ -n "$ORACLE_VERSION" ] || die "--oracle-version needs a semantic version"
+      ;;
+    --claude-auth)
+      shift
+      CLAUDE_AUTH="${1:-}"
+      [ -n "$CLAUDE_AUTH" ] || die "--claude-auth needs api_key or subscription"
+      ;;
+    --claude-mode)
+      shift
+      CLAUDE_MODE="${1:-}"
+      [ -n "$CLAUDE_MODE" ] || die "--claude-mode needs headless or repl"
+      ;;
+    -h|--help) usage; exit 0 ;;
+    *) die "unknown argument: $1" ;;
+  esac
+  shift
+done
+
+case "$HOST" in
+  claude|codex|grok) ;;
+  *) die "unsupported host '$HOST' (want claude, codex, or grok)" ;;
+esac
+
+TMP="$(mktemp -d 2>/dev/null || mktemp -d -t aos-oracles-install)" \
+  || die "could not create a temporary directory"
+trap 'rm -rf "$TMP"' EXIT HUP INT TERM
+
+if [ -n "$LOCAL_INSTALLER" ]; then
+  [ -f "$LOCAL_INSTALLER" ] || die "local installer not found: $LOCAL_INSTALLER"
+  cp "$LOCAL_INSTALLER" "$TMP/install.sh"
+else
+  command -v curl >/dev/null 2>&1 || die "curl is required"
+  log "downloading the Unicity AOS oracle installer..."
+  curl --proto '=https' --tlsv1.2 -fsSL "$INSTALL_URL" -o "$TMP/install.sh" \
+    || die "could not download $INSTALL_URL"
+fi
+chmod 700 "$TMP/install.sh"
+
+set -- --host "$HOST" --skip-host-plugin
+[ "$ASSUME_YES" -eq 0 ] || set -- "$@" --yes
+[ -z "$AOS_CHANNEL" ] || set -- "$@" --aos-channel "$AOS_CHANNEL"
+[ -z "$AOS_VERSION" ] || set -- "$@" --aos-version "$AOS_VERSION"
+[ -z "$ORACLE_VERSION" ] || set -- "$@" --oracle-version "$ORACLE_VERSION"
+[ -z "$CLAUDE_AUTH" ] || set -- "$@" --claude-auth "$CLAUDE_AUTH"
+[ -z "$CLAUDE_MODE" ] || set -- "$@" --claude-mode "$CLAUDE_MODE"
+exec sh "$TMP/install.sh" "$@"

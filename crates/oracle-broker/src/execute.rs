@@ -15,10 +15,10 @@
 //!   `tool.call` reply.
 //!
 //! The bare tool name is supplied by the broker, which strips the
-//! `mcp__astrid__` MCP prefix and charset-validates before constructing the
+//! `mcp__aos__` MCP prefix and charset-validates before constructing the
 //! routed topic — see [`crate::broker`]. The single execution door is the
 //! broker; there is no `astrid-removed tool.call.*` agent-runner leg (it was
-//! retired — the registered `astrid mcp serve` MCP server is where the
+//! retired — the registered `aos mcp serve` MCP server is where the
 //! supervised `claude -p` executes tools, so an inline runner dispatch would
 //! double-execute).
 
@@ -273,7 +273,7 @@ pub(crate) fn dispatch_with_approval(
 /// `astrid.v1.approval` is a single global broadcast topic carrying no
 /// `call_id` / `tool_name`. Correctness here rests on the engine serialising
 /// guest calls per capsule instance behind the store mutex: this dispatch
-/// holds that lock for its whole drain, so no other astrid-mcp `handle_mcp_call`
+/// holds that lock for its whole drain, so no other aos-mcp `handle_mcp_call`
 /// can be watching the topic concurrently. The only signal we can observe
 /// during our window is the one OUR OWN routed tool raised — see the
 /// "Concurrency / correlation" note in [`crate::approval`]. The decision is
@@ -660,7 +660,7 @@ pub(crate) fn is_valid_tool_name(name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     fn install_test_profile() {
-        crate::profile::install_astrid();
+        crate::profile::install_aos();
     }
 
     use super::*;

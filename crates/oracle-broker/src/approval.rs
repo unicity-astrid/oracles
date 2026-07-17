@@ -80,12 +80,12 @@
 //! at a time per capsule"*). A broker dispatch
 //! ([`crate::execute::dispatch_with_approval`]) holds that lock for the whole
 //! synchronous drain and returns the instant it observes ANY approval, so a
-//! second astrid-mcp `handle_mcp_call` cannot run — and cannot be watching the
+//! second aos-mcp `handle_mcp_call` cannot run — and cannot be watching the
 //! approval topic — while another is in flight. There is therefore at most
-//! ONE astrid-mcp approval-watcher at a time: the only `astrid.v1.approval`
+//! ONE aos-mcp approval-watcher at a time: the only `astrid.v1.approval`
 //! envelope it can observe during its window is the one ITS OWN routed tool
 //! raised (it published that tool's execute request and nothing else of
-//! astrid-mcp's is running). Intra-capsule cross-talk is structurally
+//! aos-mcp's is running). Intra-capsule cross-talk is structurally
 //! impossible — no claim registry is needed.
 //!
 //! The decision is independently routed correctly regardless: it targets
@@ -486,7 +486,7 @@ struct GrantRespond {
 /// on accept and decline). This does NOT by itself prove a human (vs a
 /// capsule) drove the accept — that remains the publish-ACL on
 /// `astrid.v1.request.mcp.ingress.respond`; it removes the unsolicited /
-/// replayed-respond residual (sage#3).
+/// replayed-respond residual.
 pub(crate) fn handle_mcp_ingress_respond(payload: Value) -> Result<(), SysError> {
     let req: IngressRespond = match serde_json::from_value(payload) {
         Ok(v) => v,
@@ -765,7 +765,7 @@ pub(crate) fn handle_mcp_grant_respond(payload: Value) -> Result<(), SysError> {
     // permanent auto-deny the user never chose. A deny keeps its ephemeral
     // semantics (marker consumed below, next call re-prompts: "not now", never
     // "never") until the respond carries provenance
-    // (unicity-astrid/astrid#1114). The approve/skip choice lives in the pure
+    // (astrid-runtime/astrid#1114). The approve/skip choice lives in the pure
     // [`crate::grant_decision::respond_decision_to_record`] chokepoint. This
     // runs only AFTER the confused-deputy gate above has passed, so a
     // security-refusal deny (no caller context / untrusted ingress, handled
@@ -1094,7 +1094,7 @@ fn clamp(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     fn install_test_profile() {
-        crate::profile::install_astrid();
+        crate::profile::install_aos();
     }
 
     use super::*;

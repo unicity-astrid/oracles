@@ -18,5 +18,5 @@ concurrent windows.
 
 ## Shared backend
 
-MCP tools go through **`astrid-mcp`**, not a Codex-branded broker. This crate
+MCP tools go through **`aos-mcp`**, not a Codex-branded broker. This crate
 is host protocol only.

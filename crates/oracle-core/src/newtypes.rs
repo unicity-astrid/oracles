@@ -39,23 +39,23 @@ macro_rules! str_newtype {
 }
 
 str_newtype!(
-    /// Distro id accepted by `astrid init --distro <id>`.
-    DistroId
+    /// Additive AOS oracle-pack id (`claude`, `grok`, `codex`).
+    PackId
 );
 str_newtype!(
     /// Default principal family for a host plugin (`claude-code`, …).
     PrincipalFamily
 );
 str_newtype!(
-    /// MCP server namespace segment (`astrid` in `mcp__astrid__*`).
+    /// MCP server namespace segment (`aos` in `mcp__aos__*`).
     McpNamespace
 );
 str_newtype!(
-    /// Full MCP tool name prefix including trailing `__` (`mcp__astrid__`).
+    /// Full MCP tool name prefix including trailing `__` (`mcp__aos__`).
     McpToolPrefix
 );
 str_newtype!(
-    /// Capsule package / component id (`astrid-mcp`).
+    /// Capsule package / component id (`aos-mcp`).
     CapsuleName
 );
 str_newtype!(
@@ -71,6 +71,6 @@ str_newtype!(
     AuditTopicPrefix
 );
 str_newtype!(
-    /// Log line tag (`astrid-mcp`).
+    /// Log line tag (`aos-mcp`).
     LogTag
 );

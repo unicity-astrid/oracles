@@ -1,0 +1,233 @@
+#!/usr/bin/env sh
+# SessionStart bootstrap and readiness report for an AOS-backed oracle host.
+set -eu
+
+DOCTOR_BOOTSTRAP_LOG=""
+
+cleanup_bootstrap_log() {
+  [ -z "$DOCTOR_BOOTSTRAP_LOG" ] || rm -f "$DOCTOR_BOOTSTRAP_LOG"
+  DOCTOR_BOOTSTRAP_LOG=""
+}
+
+on_signal() {
+  code=$1
+  trap - EXIT HUP INT TERM
+  cleanup_bootstrap_log
+  exit "$code"
+}
+
+trap cleanup_bootstrap_log EXIT
+trap 'on_signal 129' HUP
+trap 'on_signal 130' INT
+trap 'on_signal 143' TERM
+
+FORMAT=human
+NUDGE_MSG=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --format)
+      shift
+      FORMAT="${1:-human}"
+      ;;
+    -h|--help)
+      printf '%s\n' 'usage: aos-doctor [--format human|hook]'
+      exit 0
+      ;;
+    *) ;;
+  esac
+  shift
+done
+
+case "$FORMAT" in
+  human|hook) ;;
+  *) printf 'aos-doctor: unsupported format: %s\n' "$FORMAT" >&2; exit 2 ;;
+esac
+
+json_escape() {
+  printf '%s' "$1" \
+    | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' \
+    | awk 'NR>1{printf "\\n"} {printf "%s", $0}'
+}
+
+emit() {
+  report=$1
+  if [ "$FORMAT" != hook ]; then
+    printf '%s\n' "$report"
+  elif command -v jq >/dev/null 2>&1; then
+    if [ -n "$NUDGE_MSG" ]; then
+      jq -n --arg ctx "$report" --arg msg "$NUDGE_MSG" \
+        '{systemMessage:$msg,hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$ctx}}'
+    else
+      jq -n --arg ctx "$report" \
+        '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$ctx}}'
+    fi
+  elif [ -n "$NUDGE_MSG" ]; then
+    printf '{"systemMessage":"%s","hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' \
+      "$(json_escape "$NUDGE_MSG")" "$(json_escape "$report")"
+  else
+    printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' \
+      "$(json_escape "$report")"
+  fi
+}
+
+if [ -z "${AOS_PLUGIN_ROOT:-}" ]; then
+  AOS_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT:-${PLUGIN_ROOT:-}}}"
+fi
+if [ -z "${AOS_PLUGIN_ROOT:-}" ]; then
+  AOS_PLUGIN_ROOT="$(CDPATH= cd -- "$(dirname "$0")/.." 2>/dev/null && pwd -P)" \
+    || AOS_PLUGIN_ROOT="$(dirname "$(dirname "$0")")"
+fi
+export AOS_PLUGIN_ROOT
+
+if [ -z "${AOS_HOST:-}" ]; then
+  if [ -n "${GROK_PLUGIN_ROOT:-}" ]; then
+    AOS_HOST=grok
+  else
+    AOS_HOST=claude
+  fi
+fi
+export AOS_HOST
+
+case "$AOS_HOST" in
+  grok) DEFAULT_PRINCIPAL=grok-code ;;
+  *) DEFAULT_PRINCIPAL=claude-code ;;
+esac
+
+PRINCIPAL="${CLAUDE_PLUGIN_OPTION_PRINCIPAL:-${CLAUDE_PLUGIN_OPTION_principal:-${AOS_PRINCIPAL_ID:-$DEFAULT_PRINCIPAL}}}"
+case "$PRINCIPAL" in
+  ""|'${user_config.principal}') PRINCIPAL="$DEFAULT_PRINCIPAL" ;;
+esac
+
+RESOLVE="$AOS_PLUGIN_ROOT/bin/lib-aos-resolve.sh"
+if [ ! -f "$RESOLVE" ]; then
+  RESOLVE="$(CDPATH= cd -- "$(dirname "$0")" 2>/dev/null && pwd -P)/lib-aos-resolve.sh"
+fi
+# shellcheck source=lib-aos-resolve.sh
+. "$RESOLVE"
+
+BOOTSTRAP_ERROR=""
+resolve_initial() {
+  if [ "$FORMAT" = hook ]; then
+    aos_resolve_apply 2>/dev/null
+  else
+    aos_resolve_apply
+  fi
+}
+
+bootstrap_host() {
+  [ "$FORMAT" = hook ] || return 1
+  installer="$AOS_PLUGIN_ROOT/bin/aos-install"
+  [ -x "$installer" ] || return 1
+  oracle_root="${AOS_HOME:-$HOME/.aos}/extensions/oracles"
+  receipt="$oracle_root/$AOS_HOST/Pack.lock"
+  install_lock="$oracle_root/.install.lock"
+  log_dir="${AOS_HOME:-$HOME/.aos}/cache/oracles"
+  mkdir -p "$log_dir"
+  chmod 700 "$log_dir"
+  DOCTOR_BOOTSTRAP_LOG=$(mktemp "$log_dir/$AOS_HOST-doctor.log.XXXXXX") \
+    || return 1
+  log="$DOCTOR_BOOTSTRAP_LOG"
+  deadline=$(($(date +%s) + 300))
+
+  while :; do
+    set -- --host "$AOS_HOST" --yes
+    if [ "$AOS_HOST" = claude ] && [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+      set -- "$@" --claude-auth subscription --claude-mode repl
+    fi
+    if AOS_HOST="$AOS_HOST" "$installer" "$@" >"$log" 2>&1; then
+      cleanup_bootstrap_log
+      aos_resolve_apply
+      return $?
+    fi
+    BOOTSTRAP_ERROR="$(tail -n 1 "$log" 2>/dev/null || true)"
+    case "$BOOTSTRAP_ERROR" in
+      *"another oracle installation is active"*)
+        while [ -d "$install_lock" ]; do
+          if [ -r "$receipt" ] && aos_resolve_apply 2>/dev/null; then
+            cleanup_bootstrap_log
+            BOOTSTRAP_ERROR=""
+            return 0
+          fi
+          owner=""
+          if [ -f "$install_lock/pid" ] && [ ! -L "$install_lock/pid" ] \
+            && IFS= read -r owner < "$install_lock/pid" \
+            && printf '%s\n' "$owner" | grep -Eq '^[1-9][0-9]*$' \
+            && ! kill -0 "$owner" 2>/dev/null
+          then
+            break
+          fi
+          [ "$(date +%s)" -lt "$deadline" ] \
+            || { cleanup_bootstrap_log; return 1; }
+          sleep 0.1
+        done
+        if [ -r "$receipt" ] && aos_resolve_apply 2>/dev/null; then
+          cleanup_bootstrap_log
+          BOOTSTRAP_ERROR=""
+          return 0
+        fi
+        [ "$(date +%s)" -lt "$deadline" ] \
+          || { cleanup_bootstrap_log; return 1; }
+        ;;
+      *)
+        cleanup_bootstrap_log
+        return 1
+        ;;
+    esac
+  done
+}
+
+if ! resolve_initial && ! bootstrap_host; then
+  emit "Unicity AOS is not installed, so this session has no AOS capsule tools.
+
+Automatic setup could not complete${BOOTSTRAP_ERROR:+: $BOOTSTRAP_ERROR}.
+Retry with:
+
+    $(dirname "$0")/aos-install --host $AOS_HOST --yes
+
+Then start a new host session."
+  exit 0
+fi
+
+VERSION="$("$AOS" --version 2>/dev/null | head -n1 || true)"
+
+# `capsule show` is an on-disk, read-only query. It verifies both that the host
+# principal was provisioned and that the internal broker capsule is present.
+if ! "$AOS" capsule show aos-mcp --agent "$PRINCIPAL" >/dev/null 2>&1; then
+  if bootstrap_host \
+    && "$AOS" capsule show aos-mcp --agent "$PRINCIPAL" >/dev/null 2>&1
+  then
+    :
+  else
+  emit "Unicity AOS — principal '$PRINCIPAL' is not provisioned for this oracle host.
+
+Automatic setup could not complete${BOOTSTRAP_ERROR:+: $BOOTSTRAP_ERROR}.
+Retry with:
+
+    $(dirname "$0")/aos-install --host $AOS_HOST --yes
+
+Then reconnect the 'aos' MCP server."
+    exit 0
+  fi
+fi
+
+if "$AOS" status --json >/dev/null 2>&1; then
+  DAEMON_NOTE="Runtime: reachable."
+else
+  DAEMON_NOTE="Runtime: currently stopped; the AOS MCP command quiet-starts its bundled ephemeral runtime when this host connects."
+fi
+
+if [ -x "$AOS_PLUGIN_ROOT/bin/aos-update-check" ]; then
+  NUDGE_MSG=$("$AOS_PLUGIN_ROOT/bin/aos-update-check" "$AOS" 2>/dev/null || true)
+fi
+
+emit "Unicity AOS — governed oracle session ready.
+
+Product:    ${VERSION:-Unicity AOS}
+Host:       $AOS_HOST
+Principal:  $PRINCIPAL
+MCP server: aos (visible tools use mcp__aos__*)
+Broker:     aos-mcp provisioned
+$DAEMON_NOTE
+
+Native host tools remain governed by the host application's own sandbox.
+Calls through mcp__aos__* additionally cross the AOS capability and audit boundary."

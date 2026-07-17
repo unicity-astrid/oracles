@@ -1,8 +1,8 @@
-//! Native-tool `before_tool_call` verdict responder — astrid-mcp as a
+//! Native-tool `before_tool_call` verdict responder — aos-mcp as a
 //! `ToolCallBefore` merge participant.
 //!
 //! This is the SECOND plane of the same per-principal PDP. The broker
-//! ([`crate::broker`]) gates the `mcp__astrid__*` tool plane in-process and
+//! ([`crate::broker`]) gates the `mcp__aos__*` tool plane in-process and
 //! un-bypassably. This module gates Claude's NATIVE tools (`Bash`, `Write`,
 //! …), which execute inside the agent process and reach no in-process
 //! chokepoint — the only lever there is the agent's PreToolUse hook. Both
@@ -171,7 +171,7 @@ fn reply_topic(correlation_id: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     fn install_test_profile() {
-        crate::profile::install_astrid();
+        crate::profile::install_aos();
     }
 
     use super::*;
