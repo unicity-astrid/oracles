@@ -61,13 +61,14 @@ if [ -n "${AOS_VAR_OPENAI_API_KEY:-}" ]; then
 fi
 case " $* " in
   *" status "*)
-    test -f "$TEST_STATE/runtime-running"
+    test -f "$AOS_HOME/runtime-running"
     ;;
   *" start "*)
-    : > "$TEST_STATE/runtime-running"
+    mkdir -p "$AOS_HOME"
+    : > "$AOS_HOME/runtime-running"
     ;;
   *" stop "*)
-    rm -f "$TEST_STATE/runtime-running"
+    rm -f "$AOS_HOME/runtime-running"
     ;;
   *" agent show "*)
     principal=${*: -1}
@@ -173,6 +174,10 @@ cmp "$assets/codex.toml" "$lock"
 test ! -e "$home/.astrid"
 grep -Fq 'aos status --json' "$TEST_LOG"
 grep -Fq 'aos --principal default start' "$TEST_LOG"
+if grep -Fq 'aos --principal default stop' "$TEST_LOG"; then
+  echo "oracle installer stopped a runtime it does not exclusively own" >&2
+  exit 1
+fi
 if grep -Fq 'aos --principal default status' "$TEST_LOG"; then
   echo "installer used the principal-scoped status probe" >&2
   exit 1
@@ -230,10 +235,16 @@ test -f "$minimal_home/extensions/oracles/codex/Pack.lock"
 first_lock=$(shasum -a 256 "$lock" | awk '{print $1}')
 init_count=$(grep -Fc 'aos --principal default init --yes --offline' "$TEST_LOG")
 target_init_count=$(grep -Fc 'aos --principal default init --target-principal codex-code --yes --offline' "$TEST_LOG")
+start_count=$(grep -Fc 'aos --principal default start' "$TEST_LOG")
 "$repo_root/install.sh" --host codex --yes --no-install-aos
 test "$first_lock" = "$(shasum -a 256 "$lock" | awk '{print $1}')"
 test "$(grep -Fc 'aos --principal default init --yes --offline' "$TEST_LOG")" -eq "$init_count"
 test "$(grep -Fc 'aos --principal default init --target-principal codex-code --yes --offline' "$TEST_LOG")" -eq "$target_init_count"
+test "$(grep -Fc 'aos --principal default start' "$TEST_LOG")" -eq "$start_count"
+if grep -Fq 'aos --principal default stop' "$TEST_LOG"; then
+  echo "repeat oracle install stopped the shared runtime" >&2
+  exit 1
+fi
 
 create=$(grep -n 'agent create codex-code' "$TEST_LOG" | head -n1 | cut -d: -f1)
 first_install=$(grep -n 'capsule install' "$TEST_LOG" | head -n1 | cut -d: -f1)

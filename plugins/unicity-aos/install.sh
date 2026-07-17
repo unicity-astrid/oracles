@@ -65,16 +65,18 @@ json_escape() {
 
 write_mcp_config() {
   plugin="$1"
-  escaped_plugin="$(json_escape "$plugin")"
   escaped_aos="$(json_escape "$AOS")"
   tmp="$plugin/.mcp.json.tmp.$$"
   cat >"$tmp" <<EOF
 {
   "mcpServers": {
     "aos": {
-      "command": "./bin/aos-up",
-      "args": ["--principal", "codex-code"],
-      "cwd": "$escaped_plugin",
+      "command": "/bin/sh",
+      "args": [
+        "-c",
+        "home=\${AOS_HOME:-\$HOME/.aos}; aos=\${AOS_BIN:-\$home/bin/aos}; receipt=\$home/extensions/oracles/codex/Pack.lock; deadline=\$((\$(date +%s) + 300)); while [ ! -x \"\$aos\" ] || [ ! -r \"\$receipt\" ]; do if [ \"\$(date +%s)\" -ge \"\$deadline\" ]; then echo 'aos MCP startup timed out waiting for Codex oracle provisioning' >&2; exit 1; fi; sleep 0.1; done; exec \"\$aos\" --principal codex-code mcp serve"
+      ],
+      "startup_timeout_sec": 305,
       "env": {
         "AOS_BIN": "$escaped_aos"
       }

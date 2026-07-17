@@ -20,7 +20,6 @@ REQUESTED_HOSTS=""
 LOCAL_ASSETS="${AOS_ORACLE_ASSETS:-}"
 WORK=""
 COSIGN=""
-STARTED_DAEMON=0
 RELEASE_STAGE=""
 PLUGIN_SNAPSHOT=""
 PLUGIN_BLAKE3=""
@@ -36,9 +35,6 @@ die() { say "aos-oracles: $*" >&2; exit 1; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
 cleanup() {
-  if [ "$STARTED_DAEMON" -eq 1 ] && have aos; then
-    aos --principal default stop >/dev/null 2>&1 || true
-  fi
   if [ "$LOCK_HELD" -eq 1 ] && [ -n "$INSTALL_LOCK" ]; then
     rm -rf "$INSTALL_LOCK"
     LOCK_HELD=0
@@ -310,7 +306,6 @@ ensure_base() {
     [ -f "$profile" ] || die "Unicity CE initialization did not create the default product profile"
   fi
   if [ "$daemon_was_live" -eq 0 ]; then
-    STARTED_DAEMON=1
     say "Starting Unicity CE..."
     aos --principal default start >/dev/null
     daemon_is_live \

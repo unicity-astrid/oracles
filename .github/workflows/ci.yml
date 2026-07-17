@@ -179,7 +179,12 @@ jobs:
       - name: Verify Unicity AOS Codex plugin
         run: |
           set -euo pipefail
-          jq -e '.mcpServers.aos.command == "./bin/aos-up" and .mcpServers.aos.cwd == "."' plugins/unicity-aos/.mcp.json
+          jq -e '
+            .mcpServers.aos.command == "/bin/sh" and
+            (.mcpServers.aos | has("cwd") | not) and
+            .mcpServers.aos.startup_timeout_sec == 305
+          ' plugins/unicity-aos/.mcp.json
+          python3 scripts/test_codex_mcp_startup.py
           jq -e '
             .name == "unicity-aos-oracles" and
             .plugins[0].name == "unicity-aos" and
