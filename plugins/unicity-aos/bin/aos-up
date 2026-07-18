@@ -49,8 +49,8 @@ codex_ready() {
 
 install_lock_reclaimable() {
   owner=""
-  if [ -f "$INSTALL_LOCK/pid" ] && [ ! -L "$INSTALL_LOCK/pid" ]; then
-    IFS= read -r owner < "$INSTALL_LOCK/pid" || owner=""
+  if [ -f "$INSTALL_LOCK" ] && [ ! -L "$INSTALL_LOCK" ]; then
+    IFS= read -r owner < "$INSTALL_LOCK" || owner=""
   fi
   if ! printf '%s\n' "$owner" | grep -Eq '^[1-9][0-9]*$'; then
     return 0
@@ -88,7 +88,7 @@ ensure_codex() {
     last_error=$(tail -n 1 "$BOOTSTRAP_LOG" 2>/dev/null || true)
     case "$last_error" in
       *"another oracle installation is active"*)
-        while [ -d "$INSTALL_LOCK" ] && ! install_lock_reclaimable; do
+        while [ -f "$INSTALL_LOCK" ] && ! install_lock_reclaimable; do
           codex_ready && {
             cleanup_bootstrap_log
             return 0

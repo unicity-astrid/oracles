@@ -713,10 +713,32 @@ test "$(sed -n '1p' "$legacy_state/installed-codex-code-aos-mcp")" \
 # A live per-home lock fails closed and an unsuccessful contender never removes
 # the active installer's lock.
 locked_home="$home/locked/.aos"
-mkdir -p "$locked_home/extensions/oracles/.install.lock"
-sleep 60 &
+mkdir -p "$locked_home/extensions/oracles"
+lock_path="$locked_home/extensions/oracles/.install.lock"
+lock_ready="$work/live-lock-ready"
+lock_release="$work/live-lock-release"
+(
+  exec 9>>"$lock_path"
+  if command -v flock >/dev/null 2>&1; then
+    flock -n 9
+  else
+    lockf -s -t 0 9
+  fi
+  : > "$lock_ready"
+  while [ ! -e "$lock_release" ]; do sleep 0.01; done
+) &
 live_lock_pid=$!
-printf '%s\n' "$live_lock_pid" > "$locked_home/extensions/oracles/.install.lock/pid"
+while [ ! -e "$lock_ready" ]; do sleep 0.01; done
+if AOS_HOME="$locked_home" \
+  "$repo_root/install.sh" --host codex --yes --no-install-aos
+then
+  echo "installer lock without a published diagnostic pid was ignored" >&2
+  : > "$lock_release"
+  wait "$live_lock_pid"
+  exit 1
+fi
+test ! -s "$lock_path"
+printf '%s\n' "$live_lock_pid" > "$lock_path"
 if AOS_HOME="$locked_home" \
   "$repo_root/install.sh" --host codex --yes --no-install-aos
 then
@@ -724,24 +746,23 @@ then
   kill "$live_lock_pid" 2>/dev/null || true
   exit 1
 fi
-test "$(cat "$locked_home/extensions/oracles/.install.lock/pid")" = "$live_lock_pid"
-kill "$live_lock_pid" 2>/dev/null || true
-wait "$live_lock_pid" 2>/dev/null || true
+test "$(cat "$lock_path")" = "$live_lock_pid"
+: > "$lock_release"
+wait "$live_lock_pid"
 
 # A lock whose validated owner no longer exists is reclaimed atomically.
-printf '%s\n' 999999999 > "$locked_home/extensions/oracles/.install.lock/pid"
+printf '%s\n' 999999999 > "$lock_path"
 AOS_HOME="$locked_home" \
   "$repo_root/install.sh" --host codex --yes --no-install-aos
 test ! -e "$locked_home/extensions/oracles/.install.lock"
 
-# A kill between lock mkdir and pid publication must not wedge every future
-# host startup. Missing and malformed owners are reclaimed after the installer
-# gives a live contender one second to publish a valid pid.
+# Missing and malformed stale lock files are reclaimed by the platform lock.
 for abandoned in missing malformed; do
   abandoned_home="$home/abandoned-$abandoned/.aos"
-  mkdir -p "$abandoned_home/extensions/oracles/.install.lock"
+  mkdir -p "$abandoned_home/extensions/oracles"
+  : > "$abandoned_home/extensions/oracles/.install.lock"
   if [ "$abandoned" = malformed ]; then
-    printf '%s\n' not-a-pid > "$abandoned_home/extensions/oracles/.install.lock/pid"
+    printf '%s\n' not-a-pid > "$abandoned_home/extensions/oracles/.install.lock"
   fi
   AOS_HOME="$abandoned_home" \
     "$repo_root/install.sh" --host codex --yes --no-install-aos

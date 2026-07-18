@@ -64,8 +64,8 @@ host_ready() {
 
 install_lock_reclaimable() {
   owner=""
-  if [ -f "$INSTALL_LOCK/pid" ] && [ ! -L "$INSTALL_LOCK/pid" ]; then
-    IFS= read -r owner < "$INSTALL_LOCK/pid" || owner=""
+  if [ -f "$INSTALL_LOCK" ] && [ ! -L "$INSTALL_LOCK" ]; then
+    IFS= read -r owner < "$INSTALL_LOCK" || owner=""
   fi
   if ! printf '%s\n' "$owner" | grep -Eq '^[1-9][0-9]*$'; then
     return 0
@@ -76,7 +76,7 @@ install_lock_reclaimable() {
 start_bootstrap() {
   [ "$BOOTSTRAP_ATTEMPTED" -eq 0 ] || return 0
   if [ "$WAITING_FOR_INSTALL_LOCK" -eq 1 ]; then
-    if [ -d "$INSTALL_LOCK" ] && ! install_lock_reclaimable; then
+    if [ -f "$INSTALL_LOCK" ] && ! install_lock_reclaimable; then
       return 0
     fi
     WAITING_FOR_INSTALL_LOCK=0

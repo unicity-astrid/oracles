@@ -155,16 +155,14 @@ bootstrap_host() {
     BOOTSTRAP_ERROR="$(tail -n 1 "$log" 2>/dev/null || true)"
     case "$BOOTSTRAP_ERROR" in
       *"another oracle installation is active"*)
-        while [ -d "$install_lock" ]; do
+        while [ -f "$install_lock" ] && [ ! -L "$install_lock" ]; do
           if pack_is_current && aos_resolve_apply 2>/dev/null; then
             cleanup_bootstrap_log
             BOOTSTRAP_ERROR=""
             return 0
           fi
           owner=""
-          if [ -f "$install_lock/pid" ] && [ ! -L "$install_lock/pid" ]; then
-            IFS= read -r owner < "$install_lock/pid" || owner=""
-          fi
+          IFS= read -r owner < "$install_lock" || owner=""
           if ! printf '%s\n' "$owner" | grep -Eq '^[1-9][0-9]*$' \
             || ! kill -0 "$owner" 2>/dev/null
           then

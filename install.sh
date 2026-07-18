@@ -26,6 +26,7 @@ ASSET_SOURCE="release"
 B3SUM=""
 INSTALL_LOCK=""
 LOCK_HELD=0
+LOCK_BACKEND=""
 PLUGIN_STAGE=""
 RECEIPT_STAGE=""
 PREVIOUS_BINDINGS=""
@@ -38,13 +39,17 @@ have() { command -v "$1" >/dev/null 2>&1; }
 release_install_lock() {
   [ "$LOCK_HELD" -eq 1 ] && [ -n "$INSTALL_LOCK" ] || return 0
   owner=""
-  if [ -f "$INSTALL_LOCK/pid" ] && [ ! -L "$INSTALL_LOCK/pid" ] \
-    && IFS= read -r owner < "$INSTALL_LOCK/pid" \
+  if [ -f "$INSTALL_LOCK" ] && [ ! -L "$INSTALL_LOCK" ] \
+    && IFS= read -r owner < "$INSTALL_LOCK" \
     && [ "$owner" = "$$" ]
   then
-    rm -rf "$INSTALL_LOCK"
+    rm -f "$INSTALL_LOCK"
+  fi
+  if [ -n "$LOCK_BACKEND" ]; then
+    exec 9>&-
   fi
   LOCK_HELD=0
+  LOCK_BACKEND=""
 }
 
 cleanup() {
@@ -148,11 +153,13 @@ fi
 require_commands() {
   missing=""
   for command in \
-    awk basename cat chmod cp diff find grep ln mkdir mktemp mv pwd rm sed sleep sort tar tr uniq uname
+    awk basename cat chmod cp diff find grep ln mkdir mktemp mv pwd rm sed sort tar tr uniq uname
   do
     have "$command" || missing="$missing $command"
   done
   [ -z "$missing" ] || die "missing required commands:$missing"
+  have flock || have lockf \
+    || die "missing required command: flock or lockf"
 }
 
 require_commands
@@ -204,50 +211,37 @@ acquire_install_lock() {
   mkdir -p "$lock_root"
   chmod 700 "$AOS_HOME_DIR" "$AOS_HOME_DIR/extensions" "$lock_root"
   [ ! -L "$INSTALL_LOCK" ] || die "refusing symlinked oracle install lock"
-  if ! mkdir "$INSTALL_LOCK" 2>/dev/null; then
+  [ ! -e "$INSTALL_LOCK" ] || [ -f "$INSTALL_LOCK" ] \
+    || die "oracle install lock is not a regular file"
+
+  exec 9>>"$INSTALL_LOCK"
+  if have flock; then
+    lock_command=flock
+    lock_acquired=0
+    flock -n 9 || lock_acquired=$?
+  else
+    lock_command=lockf
+    lock_acquired=0
+    lockf -s -t 0 9 || lock_acquired=$?
+  fi
+  if [ "$lock_acquired" -ne 0 ]; then
     owner=""
-    if [ -f "$INSTALL_LOCK/pid" ] && [ ! -L "$INSTALL_LOCK/pid" ]; then
-      IFS= read -r owner < "$INSTALL_LOCK/pid" || owner=""
-    fi
-    if printf '%s\n' "$owner" | grep -Eq '^[1-9][0-9]*$' \
-      && kill -0 "$owner" 2>/dev/null
-    then
-      die "another oracle installation is active for $AOS_HOME_DIR (pid $owner)"
-    fi
-
-    # A process can be killed after mkdir and before writing pid. Give a live
-    # contender time to finish that tiny critical section, then reclaim only
-    # if no valid live owner appears.
-    if ! printf '%s\n' "$owner" | grep -Eq '^[1-9][0-9]*$'; then
-      sleep 1
-      owner=""
-      if [ -f "$INSTALL_LOCK/pid" ] && [ ! -L "$INSTALL_LOCK/pid" ]; then
-        IFS= read -r owner < "$INSTALL_LOCK/pid" || owner=""
-      fi
-      if printf '%s\n' "$owner" | grep -Eq '^[1-9][0-9]*$' \
-        && kill -0 "$owner" 2>/dev/null
-      then
-        die "another oracle installation is active for $AOS_HOME_DIR (pid $owner)"
-      fi
-    fi
-
-    stale_lock="${INSTALL_LOCK}.stale.$$"
-    [ ! -e "$stale_lock" ] && [ ! -L "$stale_lock" ] \
-      || die "could not reclaim stale oracle install lock"
-    mv "$INSTALL_LOCK" "$stale_lock" 2>/dev/null \
-      || die "another oracle installation is active for $AOS_HOME_DIR"
-    rm -rf "$stale_lock"
-    mkdir "$INSTALL_LOCK" 2>/dev/null \
-      || die "another oracle installation is active for $AOS_HOME_DIR"
+    IFS= read -r owner < "$INSTALL_LOCK" || owner=""
+    exec 9>&-
+    case "$owner" in
+      ''|*[!0-9]*) die "another oracle installation is active for $AOS_HOME_DIR" ;;
+      *) die "another oracle installation is active for $AOS_HOME_DIR (pid $owner)" ;;
+    esac
   fi
+  : > "$INSTALL_LOCK"
+  printf '%s\n' "$$" > "$INSTALL_LOCK"
+  LOCK_BACKEND=$lock_command
+
   LOCK_HELD=1
-  if ! printf '%s\n' "$$" > "$INSTALL_LOCK/pid"; then
-    rm -rf "$INSTALL_LOCK"
-    LOCK_HELD=0
-    die "could not record oracle install lock owner"
+  if ! chmod 600 "$INSTALL_LOCK"; then
+    release_install_lock
+    die "could not secure oracle install lock owner"
   fi
-  chmod 600 "$INSTALL_LOCK/pid" \
-    || die "could not secure oracle install lock owner"
 }
 
 atomic_symlink() {

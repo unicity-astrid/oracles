@@ -176,8 +176,8 @@ def exercise_host(host: str, root: Path) -> None:
     # cases control each half of readiness independently; launcher-owned
     # bootstrap is exercised separately below.
     active_lock = home / "extensions/oracles/.install.lock"
-    active_lock.mkdir(parents=True)
-    (active_lock / "pid").write_text(f"{os.getpid()}\n")
+    active_lock.parent.mkdir(parents=True)
+    active_lock.write_text(f"{os.getpid()}\n")
 
     write_executable(
         home / "bin/aos",
@@ -309,7 +309,7 @@ def exercise_doctor_waits_for_concurrent_bootstrap(host: str, root: Path) -> Non
         "set -eu\n"
         'printf "%s\\n" attempt >> "$TEST_INSTALL_ATTEMPTS"\n'
         'lock="$AOS_HOME/extensions/oracles/.install.lock"\n'
-        'if [ -d "$lock" ]; then\n'
+        'if [ -f "$lock" ]; then\n'
         '  printf "%s\\n" "aos-oracles: another oracle installation is active for $AOS_HOME" >&2\n'
         "  exit 1\n"
         "fi\n"
@@ -332,8 +332,8 @@ def exercise_doctor_waits_for_concurrent_bootstrap(host: str, root: Path) -> Non
     # Another host owns the shared installer lock. Completing that install does
     # not create this host's receipt, so the doctor must retry its own installer.
     active_lock = home / "extensions/oracles/.install.lock"
-    active_lock.mkdir(parents=True)
-    (active_lock / "pid").write_text(f"{os.getpid()}\n")
+    active_lock.parent.mkdir(parents=True)
+    active_lock.write_text(f"{os.getpid()}\n")
 
     environment = {
         "HOME": str(test_root / "home"),
@@ -357,8 +357,7 @@ def exercise_doctor_waits_for_concurrent_bootstrap(host: str, root: Path) -> Non
         stderr=subprocess.PIPE,
     )
     wait_for(wait_marker, doctor)
-    (active_lock / "pid").unlink()
-    active_lock.rmdir()
+    active_lock.unlink()
     wait_gate.touch()
     stdout, stderr = doctor.communicate(timeout=5)
     assert doctor.returncode == 0, (doctor.returncode, stdout, stderr)
@@ -386,10 +385,10 @@ def exercise_abandoned_lock_recovery(
     workspace.mkdir(parents=True)
     fake_bin.mkdir()
     stale_lock = home / "extensions/oracles/.install.lock"
-    stale_lock.mkdir(parents=True)
+    stale_lock.parent.mkdir(parents=True)
 
     lock_owner = subprocess.Popen(["/bin/sleep", "60"])
-    (stale_lock / "pid").write_text(f"{lock_owner.pid}\n")
+    stale_lock.write_text(f"{lock_owner.pid}\n")
 
     write_executable(
         fake_bin / "sleep",
@@ -404,13 +403,13 @@ def exercise_abandoned_lock_recovery(
         "set -eu\n"
         'printf "%s\\n" attempt >> "$TEST_INSTALL_ATTEMPTS"\n'
         'lock="$AOS_HOME/extensions/oracles/.install.lock"\n'
-        'if [ -d "$lock" ]; then\n'
-        '  owner=$(cat "$lock/pid")\n'
+        'if [ -f "$lock" ]; then\n'
+        '  owner=$(cat "$lock")\n'
         '  if kill -0 "$owner" 2>/dev/null; then\n'
         '    printf "%s\\n" "aos-oracles: another oracle installation is active for $AOS_HOME" >&2\n'
         "    exit 1\n"
         "  fi\n"
-        '  rm -rf "$lock"\n'
+        '  rm -f "$lock"\n'
         "fi\n"
         'host="$TEST_EXPECTED_HOST"\n'
         'mkdir -p "$AOS_HOME/bin" "$AOS_HOME/extensions/oracles/$host"\n'
@@ -502,8 +501,10 @@ def exercise_concurrent_launchers_use_private_logs(host: str, root: Path) -> Non
         'touch "$TEST_ARRIVALS/$$"\n'
         'while [ "$(find "$TEST_ARRIVALS" -type f | wc -l | tr -d " ")" -lt 2 ]; do /bin/sleep 0.01; done\n'
         'lock="$AOS_HOME/extensions/oracles/.install.lock"\n'
+        'guard="${lock}.guard"\n'
         'mkdir -p "${lock%/*}"\n'
-        'if mkdir "$lock" 2>/dev/null; then\n'
+        'if mkdir "$guard" 2>/dev/null; then\n'
+        '  printf "%s\\n" "$$" > "$lock"\n'
         '  while [ ! -e "$TEST_LOSER_MARKER" ]; do /bin/sleep 0.01; done\n'
         '  printf "%s\\n" "winner still provisioning"\n'
         '  while [ ! -e "$TEST_RELEASE_GATE" ]; do /bin/sleep 0.01; done\n'
@@ -515,7 +516,8 @@ def exercise_concurrent_launchers_use_private_logs(host: str, root: Path) -> Non
         'printf "%s\\n" "$*" >> "$TEST_AOS_ARGS"\n'
         "AOS\n"
         '  chmod 700 "$AOS_HOME/bin/aos"\n'
-        '  rmdir "$lock"\n'
+        '  rm -f "$lock"\n'
+        '  rmdir "$guard"\n'
         'else\n'
         '  printf "%s\\n" "aos-oracles: another oracle installation is active for $AOS_HOME" >&2\n'
         '  touch "$TEST_LOSER_MARKER"\n'
