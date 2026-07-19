@@ -50,6 +50,9 @@ class BrandBoundaryTests(unittest.TestCase):
         self.assertEqual(codex_mcp["cwd"], ".")
         self.assertEqual(codex_mcp["command"], "/bin/sh")
         self.assertGreaterEqual(codex_mcp["startup_timeout_sec"], 300)
+        self.assertEqual(
+            codex_mcp["env_vars"], ["AOS_HOME", "AOS_BIN", "AOS_BIN_ROOT"]
+        )
 
     def test_codex_plugin_teaches_building_on_the_os(self) -> None:
         plugin = ROOT / "plugins/unicity-aos"

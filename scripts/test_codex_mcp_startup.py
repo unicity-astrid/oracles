@@ -40,6 +40,7 @@ def main() -> None:
     assert SERVER["command"] == "/bin/sh"
     assert SERVER["args"] == ["./bin/aos-up", "--principal", "codex-code"]
     assert SERVER["cwd"] == "."
+    assert SERVER["env_vars"] == ["AOS_HOME", "AOS_BIN", "AOS_BIN_ROOT"]
 
     with tempfile.TemporaryDirectory(prefix="aos-codex-mcp-") as raw:
         root = Path(raw)
@@ -129,6 +130,7 @@ def main() -> None:
         assert generated["args"] == SERVER["args"]
         assert generated["cwd"] == SERVER["cwd"]
         assert generated["startup_timeout_sec"] == SERVER["startup_timeout_sec"]
+        assert generated["env_vars"] == SERVER["env_vars"]
         assert generated["env"] == {"AOS_BIN": str(home / "bin/aos")}
 
 
