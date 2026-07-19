@@ -14,6 +14,10 @@ EXPECTED = {
     "codex": ["aos-mcp"],
     "grok": ["aos-mcp"],
 }
+EXPECTED_AOS_CAPSULES = [
+    {"name": "aos-skills", "availability": "required"},
+    {"name": "aos-forge", "availability": "if-present"},
+]
 
 
 class PackContractTests(unittest.TestCase):
@@ -33,6 +37,7 @@ class PackContractTests(unittest.TestCase):
             )
             for item in capsules:
                 self.assertNotIn("wasm-blake3", item)
+            self.assertEqual(value["aos-capsule"], EXPECTED_AOS_CAPSULES)
 
     def test_plugin_snapshot_is_bound_to_the_pack_release(self) -> None:
         release = (ROOT / "release" / "oracle-version").read_text().strip()
@@ -50,6 +55,10 @@ class PackContractTests(unittest.TestCase):
             self.assertNotIn("astrid-capsule-system", names)
             self.assertNotIn("astrid-capsule-forge", names)
             self.assertFalse(any(name.endswith(("-install", "-runner")) for name in names))
+            self.assertEqual(
+                {item["name"] for item in value["aos-capsule"]},
+                {"aos-skills", "aos-forge"},
+            )
 
 
 if __name__ == "__main__":

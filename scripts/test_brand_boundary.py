@@ -64,6 +64,10 @@ class BrandBoundaryTests(unittest.TestCase):
             "skills/unicity-aos/SKILL.md": (
                 "Unicity AOS is not itself an agent harness",
                 "Load `capsule-forge` before authoring a capsule",
+                "works for user-installed",
+                "`list_skills`",
+                "`read_skill`",
+                "supplies instructions, not authority",
                 "Choose the right artifact",
                 "improvable user-space",
                 "user's instructions",
@@ -94,6 +98,18 @@ class BrandBoundaryTests(unittest.TestCase):
             body = (plugin / relative).read_text()
             for needle in needles:
                 self.assertIn(needle, body, relative)
+
+    def test_aos_hosts_discover_capsule_contributed_skills(self) -> None:
+        for path in (
+            "plugins/common/bin/aos-doctor",
+            "plugins/claude/bin/aos-doctor",
+            "plugins/grok/bin/aos-doctor",
+            "plugins/unicity-aos/bin/aos-doctor",
+        ):
+            body = (ROOT / path).read_text()
+            self.assertIn("Capsules may contribute durable", body, path)
+            self.assertIn("list_skills", body, path)
+            self.assertIn("read_skill", body, path)
 
     def test_retired_public_names_do_not_return(self) -> None:
         roots = [ROOT / "README.md", ROOT / "install.sh", ROOT / "plugins"]

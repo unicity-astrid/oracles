@@ -38,11 +38,18 @@ under `~/.aos`; it never imports or changes a standalone `~/.astrid` tree.
 Oracle packs are additive components, not replacement operating-system
 distributions.
 
-| Host | Principal | Pack capsule |
-|---|---|---|
-| Claude Code | `claude-code` | `aos-mcp` |
-| Codex | `codex-code` | `aos-mcp` |
-| Grok Build | `grok-code` | `aos-mcp` |
+| Host | Principal | Oracle capsule | Selected AOS services |
+|---|---|---|---|
+| Claude Code | `claude-code` | `aos-mcp` | `aos-skills`, `aos-forge` when shipped |
+| Codex | `codex-code` | `aos-mcp` | `aos-skills`, `aos-forge` when shipped |
+| Grok Build | `grok-code` | `aos-mcp` | `aos-skills`, `aos-forge` when shipped |
+
+The signed pack distinguishes Oracle-owned capsule assets from selected
+AOS-owned services. The installer resolves an `[[aos-capsule]]` only from the
+active signed AOS release, never downloads or republishes its bytes, and grants
+only the entries declared by the host pack. `aos-skills` makes skills written by
+any installed capsule discoverable to the host principal; Forge is the first
+construction service using that generic path, not a special skill loader.
 
 Pack manifests live under `packs/`. Host plugins are installed from the signed
 release snapshot under `~/.aos/extensions/oracles/plugins/<version>`, never from

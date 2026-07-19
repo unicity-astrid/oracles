@@ -20,6 +20,19 @@ The MCP server independently exposes the tool surface granted to `codex-code` as
 `mcp__aos__*`. Installing the plugin therefore supplies both the knowledge of
 how to build and the governed tools for inspecting or changing the live OS.
 
+Capsules can also contribute skills after the plugin was published. Their
+install hooks write valid files under the principal's `home://skills/`, and the
+`aos-skills` capsule exposes them through `list_skills` and `read_skill`. The
+Codex bootstrap skill tells the agent to inspect that index when it is present,
+so this path works for third-party and user-authored capsules—not only Forge.
+
+This does not rewrite the installed plugin. Codex discovers native plugin
+skills from the signed `skills/` snapshot at session start, while AOS-native
+skills are fetched on demand through the governed MCP surface. Important
+first-party workflows remain vendored into the plugin for automatic routing and
+offline use; the capsule copy is the live AOS source for agents and skills added
+after publication.
+
 ## Fresh-session path
 
 For a request such as “while fixing this project, improve your AOS setup when

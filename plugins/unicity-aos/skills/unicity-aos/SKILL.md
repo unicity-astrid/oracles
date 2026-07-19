@@ -29,6 +29,10 @@ resources, and audits actions.
 - The `aos` MCP server exposes the tools visible to `codex-code`. Tool names are
   surfaced as `mcp__aos__*`; the exact set comes from the installed and granted
   capsules, not from this prompt.
+- The AOS skills service discovers any valid `SKILL.md` contributed by a
+  capsule under the principal's `home://skills/`. Use `list_skills` and
+  `read_skill` when those tools are present; this works for user-installed
+  capsules as well as the Community Edition fleet.
 - Session hooks provision and register the Codex host and apply AOS policy at
   tool and approval boundaries.
 
@@ -40,14 +44,22 @@ move them behind AOS policy.
 ## Discover before acting
 
 1. Inspect the available `mcp__aos__*` tools instead of assuming a tool exists.
-2. When present, start with `system_status` and `list_capsules`.
-3. Use `inspect_capsule`, `list_interfaces`, and `read_interface` to understand
+2. When `list_skills` is present, call it with `dir_path` set to `skills` and
+   inspect the returned names and descriptions. Use `read_skill` with the same
+   directory and a matching skill ID before following that capsule's workflow.
+3. When present, use `system_status` and `list_capsules` to inspect the OS.
+4. Use `inspect_capsule`, `list_interfaces`, and `read_interface` to understand
    the installed composition and typed contracts.
-4. Load `capsule-forge` before authoring a capsule. Prefer its Forge tools when
+5. Load `capsule-forge` before authoring a capsule. Prefer its Forge tools when
    they are visible; its by-hand workflow remains usable when AOS is offline.
-5. Load `meta-harness` when work reveals a missing capability, recurring
+6. Load `meta-harness` when work reveals a missing capability, recurring
    friction, or a useful harness improvement. Let the user's instructions and
    standing preferences steer how much initiative to exercise.
+
+Reading a capsule-provided skill supplies instructions, not authority. The
+capsule's installation, the principal's grants, and AOS policy still determine
+which effects are possible. Skills written to `home://skills/` remain available
+to later sessions for that principal without modifying the signed Codex plugin.
 
 Use the AOS commands, tools, contracts, grants, and provider surfaces that
 inspection proves are available. When a required runtime surface is absent,

@@ -17,6 +17,11 @@ Prefer AOS MCP tools when an action must cross the product's capability and
 audit boundary. Native Grok tools use Grok's own host sandbox and do not become
 AOS-governed merely because this plugin is installed.
 
+When `list_skills` is available, call it with `dir_path` set to `skills` to
+discover workflows contributed by any capsule for `grok-code`. Load a relevant
+entry with `read_skill`. This is durable across sessions and generic to
+user-installed capsules; reading instructions does not grant their effects.
+
 If AOS or the `grok-code` profile is missing, offer the explicit installer:
 
 ```sh

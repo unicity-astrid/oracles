@@ -430,6 +430,20 @@ capsules_for() {
   esac
 }
 
+# AOS-owned capsules a host principal should be able to use when the selected
+# signed product release contains them. These are dependencies, not Oracle
+# assets: the Oracle pack declares the names and the installer resolves bytes
+# only from the active AOS release.
+aos_capsules_for() {
+  case "$1" in
+    claude|codex|grok)
+      printf '%s\n' \
+        'aos-skills required' \
+        'aos-forge if-present'
+      ;;
+  esac
+}
+
 pack_capsules_tsv() {
   pc_pack=$1
   awk '
@@ -463,6 +477,34 @@ pack_capsules_tsv() {
     }
     END { emit() }
   ' "$pc_pack" || die "pack has invalid capsule ownership metadata"
+}
+
+pack_aos_capsules_tsv() {
+  pac_pack=$1
+  awk '
+    function emit() {
+      if (!inside) return
+      if (name == "" || availability == "" || seen[name]++) exit 2
+      print name " " availability
+      name = ""
+      availability = ""
+    }
+    /^\[\[aos-capsule\]\]$/ { emit(); inside = 1; next }
+    /^\[\[/ { emit(); inside = 0; next }
+    inside && /^name = "[A-Za-z0-9][A-Za-z0-9._-]*"$/ {
+      name = $0
+      sub(/^name = "/, "", name)
+      sub(/"$/, "", name)
+      next
+    }
+    inside && /^availability = "(required|if-present)"$/ {
+      availability = $0
+      sub(/^availability = "/, "", availability)
+      sub(/"$/, "", availability)
+      next
+    }
+    END { emit() }
+  ' "$pac_pack" || die "pack has invalid AOS capsule dependency metadata"
 }
 
 write_managed_capsules() {
@@ -821,6 +863,114 @@ validate_pack() {
   actual=$(awk '{print $1}' "$CURRENT_PACK_BINDINGS")
   expected=$(capsules_for "$host")
   [ "$actual" = "$expected" ] || die "signed $host pack capsule set is not the expected release set"
+  CURRENT_AOS_CAPSULES="$WORK/current-$host.aos-capsules"
+  pack_aos_capsules_tsv "$pack" > "$CURRENT_AOS_CAPSULES"
+  actual_aos=$(cat "$CURRENT_AOS_CAPSULES")
+  expected_aos=$(aos_capsules_for "$host")
+  [ "$actual_aos" = "$expected_aos" ] \
+    || die "signed $host pack AOS capsule dependencies are not the expected set"
+  ACTIVE_AOS_VERSION=$installed_aos
+}
+
+aos_release_has_capsule() {
+  ar_name=$1
+  ar_release=$2
+  ar_artifact="$ar_release/capsules/$ar_name.capsule"
+  [ -f "$ar_release/Distro.toml" ] && [ ! -L "$ar_release/Distro.toml" ] \
+    && [ -f "$ar_release/capsule-assets.txt" ] && [ ! -L "$ar_release/capsule-assets.txt" ] \
+    && [ -f "$ar_artifact" ] && [ ! -L "$ar_artifact" ] \
+    && grep -Fqx "$ar_name.capsule" "$ar_release/capsule-assets.txt" \
+    && awk -v wanted="$ar_name" -v source="capsules/$ar_name.capsule" '
+      function finish() {
+        if (inside && name == wanted && artifact == source) found = 1
+      }
+      /^\[\[capsule\]\]$/ {
+        finish()
+        inside = 1
+        name = ""
+        artifact = ""
+        next
+      }
+      /^\[\[/ { finish(); inside = 0; next }
+      inside && /^name = "/ {
+        name = $0
+        sub(/^name = "/, "", name)
+        sub(/"$/, "", name)
+        next
+      }
+      inside && /^source = "/ {
+        artifact = $0
+        sub(/^source = "/, "", artifact)
+        sub(/"$/, "", artifact)
+      }
+      END { finish(); exit !found }
+    ' "$ar_release/Distro.toml"
+}
+
+install_aos_capsule_for_principal() {
+  iac_principal=$1
+  iac_name=$2
+  iac_artifact=$3
+  iac_install=1
+  AOS_CAPSULE_RESOLVED=0
+
+  if load_capsule_record "$iac_principal" "$iac_name"; then
+    case "$CAPSULE_SOURCE" in
+      "$iac_artifact") iac_install=0 ;;
+      "$AOS_HOME_DIR"/releases/*/capsules/"$iac_name".capsule) ;;
+      *)
+        say "Preserving locally supplied capsule '$iac_name' for $iac_principal without granting it as an AOS dependency."
+        return 0
+        ;;
+    esac
+  fi
+
+  if [ "$iac_install" -eq 1 ]; then
+    if [ "$ASSUME_YES" -eq 1 ]; then
+      aos --principal "$iac_principal" capsule install "$iac_artifact" --yes </dev/null
+    elif [ -r /dev/tty ]; then
+      aos --principal "$iac_principal" capsule install "$iac_artifact" </dev/tty
+    else
+      aos --principal "$iac_principal" capsule install "$iac_artifact"
+    fi
+  fi
+
+  load_capsule_record "$iac_principal" "$iac_name" \
+    || die "AOS capsule dependency '$iac_name' has no readable identity for $iac_principal"
+  [ "$CAPSULE_SOURCE" = "$iac_artifact" ] \
+    || die "AOS capsule dependency '$iac_name' did not resolve to the active product release"
+  AOS_CAPSULE_RESOLVED=1
+}
+
+resolve_aos_capsules() {
+  rac_principal=$1
+  rac_release="$AOS_HOME_DIR/releases/$ACTIVE_AOS_VERSION"
+  [ -d "$rac_release" ] && [ ! -L "$rac_release" ] \
+    || die "installed Unicity AOS $ACTIVE_AOS_VERSION has no trusted release directory"
+  [ -f "$rac_release/Distro.toml" ] && [ ! -L "$rac_release/Distro.toml" ] \
+    || die "installed Unicity AOS $ACTIVE_AOS_VERSION has no trusted distribution manifest"
+  grep -Fqx 'id = "unicity-ce"' "$rac_release/Distro.toml" \
+    || die "installed Unicity AOS $ACTIVE_AOS_VERSION has the wrong distribution identity"
+  grep -Fqx "version = \"$ACTIVE_AOS_VERSION\"" "$rac_release/Distro.toml" \
+    || die "installed Unicity AOS release and distribution versions differ"
+  RESOLVED_AOS_CAPSULES="$WORK/resolved-$rac_principal.aos-capsules"
+  : > "$RESOLVED_AOS_CAPSULES"
+
+  while read -r rac_name rac_availability rac_extra; do
+    [ -n "$rac_name" ] || continue
+    [ -z "${rac_extra:-}" ] || die "invalid AOS capsule dependency record"
+    if ! aos_release_has_capsule "$rac_name" "$rac_release"; then
+      if [ "$rac_availability" = required ]; then
+        die "installed Unicity AOS $ACTIVE_AOS_VERSION is missing required capsule '$rac_name'"
+      fi
+      say "AOS capsule '$rac_name' is unavailable in Unicity AOS $ACTIVE_AOS_VERSION; continuing without it."
+      continue
+    fi
+    install_aos_capsule_for_principal \
+      "$rac_principal" "$rac_name" "$rac_release/capsules/$rac_name.capsule"
+    [ "$AOS_CAPSULE_RESOLVED" -eq 1 ] || continue
+    printf '%s\n' "$rac_name" >> "$RESOLVED_AOS_CAPSULES"
+  done < "$CURRENT_AOS_CAPSULES"
 }
 
 stage_pack() {
@@ -859,6 +1009,7 @@ install_pack() {
   OBSOLETE_BINDINGS="$WORK/obsolete-$host.bindings"
   : > "$OBSOLETE_BINDINGS"
   ensure_principal "$host" "$principal"
+  resolve_aos_capsules "$principal"
 
   for capsule in $(capsules_for "$host"); do
     expected_hash=$(binding_hash "$CURRENT_PACK_BINDINGS" "$capsule") \
@@ -896,6 +1047,10 @@ install_pack() {
   for capsule in $(capsules_for "$host"); do
     set -- "$@" --add-capsule "$capsule"
   done
+  while read -r capsule; do
+    [ -n "$capsule" ] || continue
+    set -- "$@" --add-capsule "$capsule"
+  done < "$RESOLVED_AOS_CAPSULES"
   "$@" >/dev/null
 
   while read -r previous_name previous_hash previous_extra; do
