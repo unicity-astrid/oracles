@@ -54,6 +54,17 @@ class ReleaseWorkflowContractTests(unittest.TestCase):
         )
         self.assertLess(ready, publish)
 
+    def test_published_release_must_be_platform_immutable(self) -> None:
+        publish = self.workflow.index(
+            'gh release edit "$GITHUB_REF_NAME" --draft=false'
+        )
+        immutable = self.workflow.index("--json isImmutable", publish)
+        refusal = self.workflow.index(
+            "published release is not immutable", immutable
+        )
+        self.assertLess(publish, immutable)
+        self.assertLess(immutable, refusal)
+
     def test_signed_pack_records_the_built_wasm_identity(self) -> None:
         build = self.workflow.index("built_hash=$(b3sum artifacts/aos-mcp.wasm")
         inject = self.workflow.index("wasm-blake3", build)
