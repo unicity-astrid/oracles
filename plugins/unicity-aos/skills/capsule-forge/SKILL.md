@@ -844,7 +844,7 @@ to `codex-code`, AOS bridges its tools into this Codex session over MCP:
 | Tool | Use it when |
 |---|---|
 | `forge_quickstart` | You want the condensed build-your-first-capsule guide inline. |
-| `meta_harness_quickstart` | You need to build or extend a user-space meta-harness without allowing generated code to self-promote. |
+| `meta_harness_quickstart` | Work reveals a useful way to extend the agent's memory, skills, harness, composition, or capabilities. |
 | `scaffold_capsule { name }` | You want a complete compiling skeleton as `path -> content` JSON to write out. |
 | `explain_interface { name }` | You need to read a WIT contract (e.g. `tool`, `llm`, `session`) plus a plain-English summary. |
 | `suggest_capabilities { intent }` | You describe what the capsule should do and get the exact manifest lines (incl. real LLM-provider topics). |
@@ -856,8 +856,8 @@ The CLI and by-hand paths above still explain how to author the artifact, but do
 not claim it was inspected, installed, or activated through AOS.
 
 Load the `meta-harness` skill before building a user-space meta-harness on AOS
-or extending one on an agent's own initiative. It defines the evidence,
-quarantine, evaluation, approval, and rollback gates around this authoring
-loop.
+or extending one on an agent's own initiative. It teaches the reflexive world
+model, when to improve inline or afterward, which artifact to choose, and how
+to evaluate and retain the extension.
 
 Welcome to capsule authoring. Scaffold one and ship it.

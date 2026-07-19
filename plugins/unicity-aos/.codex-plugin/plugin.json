@@ -24,7 +24,7 @@
   "interface": {
     "displayName": "Unicity AOS",
     "shortDescription": "Build and operate agent systems on Unicity AOS.",
-    "longDescription": "Connects a principal-scoped Codex agent to Unicity AOS tools over MCP and adds the operating model, capsule authoring guide, meta-harness workflow, health checks, and policy hooks.",
+    "longDescription": "Connects a principal-scoped Codex agent to Unicity AOS tools over MCP and adds the operating model, capsule authoring guide, proactive meta-harness world extension, health checks, and policy hooks.",
     "developerName": "Unicity Labs",
     "category": "Productivity",
     "capabilities": [
@@ -35,7 +35,7 @@
     "defaultPrompt": [
       "Inspect my Unicity AOS system and explain what I can build.",
       "Build a least-privilege capsule for this capability.",
-      "Design a governed meta-harness on Unicity AOS."
+      "Notice and build useful extensions to this agent's AOS world while working."
     ]
   }
 }

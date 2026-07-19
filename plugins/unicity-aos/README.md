@@ -9,7 +9,8 @@ On installation, Codex reads `.codex-plugin/plugin.json` and discovers:
 
 - `skills/unicity-aos` for the operating-system and principal boundary;
 - `skills/capsule-forge` for a complete capsule authoring workflow;
-- `skills/meta-harness` for building a governed user-space meta-harness on AOS;
+- `skills/meta-harness` for proactively extending the agent's user-space world
+  when work reveals missing capability or reusable leverage;
 - `.mcp.json`, which starts `aos --principal codex-code mcp serve`; and
 - session and tool hooks under `hooks/hooks.json`.
 
@@ -21,25 +22,40 @@ how to build and the governed tools for inspecting or changing the live OS.
 
 ## Fresh-session path
 
-For a request such as “build a Slack meta-harness on AOS,” a fresh Codex session
-should:
+For a request such as “while fixing this project, improve your AOS setup when
+that would make this and future work better,” a fresh Codex session should:
 
 1. Load `unicity-aos` and recognize AOS as the operating system, not the
    meta-harness.
-2. Load `meta-harness` for worker scope, lifecycle, capability-gap, quarantine,
-   evaluation, approval, and rollback rules.
+2. Load `meta-harness` for the agent-world model, proactive initiative, artifact
+   choice, evaluation, and continuity.
 3. Load `capsule-forge` when a missing connector or capability requires code.
 4. Inspect the actual `mcp__aos__*` tools, capsules, and WIT contracts.
-5. Reuse, compose, or configure installed capabilities before authoring a new
-   capsule.
-6. Build and test the smallest missing capability, then leave promotion to AOS
-   policy and operator approval.
+5. Decide whether the useful extension belongs inline, after the immediate
+   objective, or in durable memory, a skill, or a trace for later.
+6. Reuse, compose, configure, remember, or build the smallest useful extension,
+   evaluate it, and preserve it for future work.
+
+## Initiative follows the user
+
+The plugin does not impose a self-extension personality or mode enum. Ordinary
+instructions such as “think widely,” “decide for yourself,” “only propose,” or
+“implement what is useful” tell the agent how much initiative fits the work.
+Approved standing preferences can be preserved in principal-scoped memory or
+configuration so future sessions inherit the same direction.
+
+Memory preserves intent and continuity; AOS capabilities and operator policy
+remain the operational authority boundary. The agent should still reach for a
+useful extension proactively. It uses judgment about whether the extension is
+needed to complete the present objective, is better made after that work, or
+should be retained as a future opportunity.
 
 The static skills are sufficient to explain the architecture and author a
 capsule from zero, even if AOS is temporarily offline. Live discovery,
-installation, grants, and supervision still require the MCP server and the
-relevant AOS capsules. If AOS does not yet expose a durable worker API, Codex
-must report that gap; a shell process is not a substitute for an agent.
+installation, grants, and live operation still require the MCP server and the
+relevant AOS capsules. Workers and subagents are optional mechanisms: a useful
+meta-harness can improve memory, skills, context, harness code, composition, or
+capsules without them.
 
 The `capsule-forge` instructions are vendored from the Forge capsule in the AOS
 Community Edition source. Host-specific text may explain MCP discovery, but the

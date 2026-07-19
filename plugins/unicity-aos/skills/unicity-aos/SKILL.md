@@ -23,8 +23,9 @@ resources, and audits actions.
 - This skill provides the OS and principal boundary.
 - The `capsule-forge` skill is the complete authoring guide for building a
   least-privilege capsule from zero.
-- The `meta-harness` skill explains how to compose agents and capsules into a
-  governed user-space meta-harness on AOS.
+- The `meta-harness` skill teaches the agent to treat instructions, memory,
+  skills, harness code, tools, capsules, and traces as an improvable user-space
+  world and to reach proactively for useful extensions while it works.
 - The `aos` MCP server exposes the tools visible to `codex-code`. Tool names are
   surfaced as `mcp__aos__*`; the exact set comes from the installed and granted
   capsules, not from this prompt.
@@ -44,12 +45,14 @@ move them behind AOS policy.
    the installed composition and typed contracts.
 4. Load `capsule-forge` before authoring a capsule. Prefer its Forge tools when
    they are visible; its by-hand workflow remains usable when AOS is offline.
-5. Load `meta-harness` before creating persistent platform workers or changing
-   a harness in response to capability gaps.
+5. Load `meta-harness` when work reveals a missing capability, recurring
+   friction, or a useful harness improvement. Let the user's instructions and
+   standing preferences steer how much initiative to exercise.
 
-Never fabricate AOS commands, tools, contracts, worker APIs, grants, or provider
-permissions. If a required runtime surface is absent, describe the missing
-substrate honestly rather than substituting a background shell process.
+Use the AOS commands, tools, contracts, grants, and provider surfaces that
+inspection proves are available. When a required runtime surface is absent,
+name the missing substrate precisely and continue with the parts of the agent's
+world that can actually be improved.
 
 ## Choose the right artifact
 
@@ -61,9 +64,9 @@ substrate honestly rather than substituting a background shell process.
   credential, identity, deduplication, or rate-limit boundaries.
 - Build a **harness** in user space when agents, sessions, context, skills,
   tools, state, and policies must operate as one system.
-- Build a **meta-harness** when that harness also supervises scoped workers or
-  improves harness composition through measured evidence and independent
-  evaluation.
+- Build a **meta-harness** when the agent should inspect and improve its own
+  user-space world through experience. It may use workers when the host offers
+  them and delegation is useful, but workers are not required.
 - Build or change a **host plugin/oracle** only when integrating an external
   agent host such as Codex with AOS. It is a host adapter, not an AOS capsule.
 

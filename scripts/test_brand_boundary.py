@@ -56,7 +56,7 @@ class BrandBoundaryTests(unittest.TestCase):
         manifest = load_json("plugins/unicity-aos/.codex-plugin/plugin.json")
         self.assertIn("operating system for agents", manifest["description"])
         self.assertIn(
-            "Design a governed meta-harness on Unicity AOS.",
+            "Notice and build useful extensions to this agent's AOS world while working.",
             manifest["interface"]["defaultPrompt"],
         )
 
@@ -65,6 +65,8 @@ class BrandBoundaryTests(unittest.TestCase):
                 "Unicity AOS is not itself an agent harness",
                 "Load `capsule-forge` before authoring a capsule",
                 "Choose the right artifact",
+                "improvable user-space",
+                "user's instructions",
                 "AOS is the common operating environment",
             ),
             "skills/capsule-forge/SKILL.md": (
@@ -78,8 +80,13 @@ class BrandBoundaryTests(unittest.TestCase):
                 "No checked-in `wit/`",
             ),
             "skills/meta-harness/SKILL.md": (
-                "Unicity AOS is the operating system for agents",
-                "Forge is OS construction tooling",
+                "Treat the AOS user-space environment",
+                "Exercise initiative",
+                "Reach for the ability proactively",
+                "The user's instruction sets the degree of freedom",
+                "Worker or subagent",
+                "optional pattern, not a prerequisite",
+                "Improve harness code from experience",
                 "Definition of done",
             ),
         }
