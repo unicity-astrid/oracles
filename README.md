@@ -71,6 +71,11 @@ The customer-facing server, broker capsule, and tool namespace are `aos`,
 behind that adapter: `astrid.v1.*`, `astrid-sdk`, the `astrid:*` WIT world, and
 the bundled runtime binaries retain their permanent names and provenance.
 
+The Codex plugin separates three kinds of knowledge: the AOS operating model,
+capsule authoring through Forge, and user-space meta-harness composition. See
+[Unicity AOS for Codex](plugins/unicity-aos/README.md) for the exact fresh-session
+load path and its current runtime boundaries.
+
 ## Develop
 
 ```sh

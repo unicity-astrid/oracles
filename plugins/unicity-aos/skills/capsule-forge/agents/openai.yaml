@@ -1,0 +1,4 @@
+interface:
+  display_name: "Capsule Forge"
+  short_description: "Build a Unicity AOS capsule from zero"
+  default_prompt: "Use $capsule-forge to build a least-privilege Unicity AOS capsule for this capability."

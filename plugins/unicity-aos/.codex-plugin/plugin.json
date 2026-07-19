@@ -1,7 +1,7 @@
 {
   "name": "unicity-aos",
   "version": "0.1.4",
-  "description": "Connect Codex to Unicity AOS with governed capsule tools, health checks, policy hooks, and a principal-scoped identity.",
+  "description": "Connect Codex to Unicity AOS, the operating system for agents, with governed tools, construction skills, policy hooks, and a principal-scoped identity.",
   "author": {
     "name": "Unicity Labs",
     "email": "info@unicity-labs.com"
@@ -15,14 +15,16 @@
     "codex",
     "agent",
     "mcp",
-    "capsule"
+    "capsule",
+    "forge",
+    "meta-harness"
   ],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Unicity AOS",
-    "shortDescription": "Connect Codex to Unicity AOS.",
-    "longDescription": "Adds Unicity AOS operating instructions, capsule tools over MCP, a SessionStart health check, and policy hooks for a principal-scoped Codex agent.",
+    "shortDescription": "Build and operate agent systems on Unicity AOS.",
+    "longDescription": "Connects a principal-scoped Codex agent to Unicity AOS tools over MCP and adds the operating model, capsule authoring guide, meta-harness workflow, health checks, and policy hooks.",
     "developerName": "Unicity Labs",
     "category": "Productivity",
     "capabilities": [
@@ -31,7 +33,9 @@
       "skills"
     ],
     "defaultPrompt": [
-      "Use Unicity AOS tools for governed agent operations."
+      "Inspect my Unicity AOS system and explain what I can build.",
+      "Build a least-privilege capsule for this capability.",
+      "Design a governed meta-harness on Unicity AOS."
     ]
   }
 }

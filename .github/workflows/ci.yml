@@ -152,6 +152,11 @@ jobs:
           assert manifest["mcpServers"] == "./.mcp.json"
           assert "hooks" not in manifest
           assert (root / "skills/unicity-aos/SKILL.md").is_file()
+          assert (root / "skills/unicity-aos/agents/openai.yaml").is_file()
+          assert (root / "skills/capsule-forge/SKILL.md").is_file()
+          assert (root / "skills/capsule-forge/agents/openai.yaml").is_file()
+          assert (root / "skills/meta-harness/SKILL.md").is_file()
+          assert (root / "skills/meta-harness/agents/openai.yaml").is_file()
           assert (root / "hooks/hooks.json").is_file()
           PY
 

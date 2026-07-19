@@ -51,6 +51,43 @@ class BrandBoundaryTests(unittest.TestCase):
         self.assertEqual(codex_mcp["command"], "/bin/sh")
         self.assertGreaterEqual(codex_mcp["startup_timeout_sec"], 300)
 
+    def test_codex_plugin_teaches_building_on_the_os(self) -> None:
+        plugin = ROOT / "plugins/unicity-aos"
+        manifest = load_json("plugins/unicity-aos/.codex-plugin/plugin.json")
+        self.assertIn("operating system for agents", manifest["description"])
+        self.assertIn(
+            "Design a governed meta-harness on Unicity AOS.",
+            manifest["interface"]["defaultPrompt"],
+        )
+
+        required = {
+            "skills/unicity-aos/SKILL.md": (
+                "Unicity AOS is not itself an agent harness",
+                "Load `capsule-forge` before authoring a capsule",
+                "Choose the right artifact",
+                "AOS is the common operating environment",
+            ),
+            "skills/capsule-forge/SKILL.md": (
+                "Author a Unicity AOS Capsule From Zero",
+                "AOS bridges its tools into this Codex session",
+                "`meta_harness_quickstart`",
+                'channel = "1.94.0"',
+                "secrets/<scope>/<capsule>/<key>",
+                "receives the plaintext only when it calls",
+                "raw `.wasm` is not",
+                "No checked-in `wit/`",
+            ),
+            "skills/meta-harness/SKILL.md": (
+                "Unicity AOS is the operating system for agents",
+                "Forge is OS construction tooling",
+                "Definition of done",
+            ),
+        }
+        for relative, needles in required.items():
+            body = (plugin / relative).read_text()
+            for needle in needles:
+                self.assertIn(needle, body, relative)
+
     def test_retired_public_names_do_not_return(self) -> None:
         roots = [ROOT / "README.md", ROOT / "install.sh", ROOT / "plugins"]
         forbidden = {

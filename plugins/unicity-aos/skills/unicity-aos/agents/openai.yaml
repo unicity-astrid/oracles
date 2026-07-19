@@ -1,0 +1,4 @@
+interface:
+  display_name: "Unicity AOS"
+  short_description: "Build and operate agent systems on AOS"
+  default_prompt: "Use $unicity-aos to inspect my AOS system and choose the right artifact to build."
