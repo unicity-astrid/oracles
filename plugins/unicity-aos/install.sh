@@ -79,6 +79,11 @@ write_mcp_config() {
       ],
       "cwd": ".",
       "startup_timeout_sec": 305,
+      "env_vars": [
+        "AOS_HOME",
+        "AOS_BIN",
+        "AOS_BIN_ROOT"
+      ],
       "env": {
         "AOS_BIN": "$escaped_aos"
       }
