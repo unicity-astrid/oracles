@@ -51,6 +51,66 @@ class BrandBoundaryTests(unittest.TestCase):
         self.assertEqual(codex_mcp["command"], "/bin/sh")
         self.assertGreaterEqual(codex_mcp["startup_timeout_sec"], 300)
 
+    def test_codex_plugin_teaches_building_on_the_os(self) -> None:
+        plugin = ROOT / "plugins/unicity-aos"
+        manifest = load_json("plugins/unicity-aos/.codex-plugin/plugin.json")
+        self.assertIn("operating system for agents", manifest["description"])
+        self.assertIn(
+            "Notice and build useful extensions to this agent's AOS world while working.",
+            manifest["interface"]["defaultPrompt"],
+        )
+
+        required = {
+            "skills/unicity-aos/SKILL.md": (
+                "Unicity AOS is not itself an agent harness",
+                "Load `capsule-forge` before authoring a capsule",
+                "works for user-installed",
+                "`list_skills`",
+                "`read_skill`",
+                "supplies instructions, not authority",
+                "Choose the right artifact",
+                "improvable user-space",
+                "user's instructions",
+                "AOS is the common operating environment",
+            ),
+            "skills/capsule-forge/SKILL.md": (
+                "Author a Unicity AOS Capsule From Zero",
+                "AOS bridges its tools into this Codex session",
+                "`meta_harness_quickstart`",
+                'channel = "1.94.0"',
+                "secrets/<scope>/<capsule>/<key>",
+                "receives the plaintext only when it calls",
+                "raw `.wasm` is not",
+                "No checked-in `wit/`",
+            ),
+            "skills/meta-harness/SKILL.md": (
+                "Treat the AOS user-space environment",
+                "Exercise initiative",
+                "Reach for the ability proactively",
+                "The user's instruction sets the degree of freedom",
+                "Worker or subagent",
+                "optional pattern, not a prerequisite",
+                "Improve harness code from experience",
+                "Definition of done",
+            ),
+        }
+        for relative, needles in required.items():
+            body = (plugin / relative).read_text()
+            for needle in needles:
+                self.assertIn(needle, body, relative)
+
+    def test_aos_hosts_discover_capsule_contributed_skills(self) -> None:
+        for path in (
+            "plugins/common/bin/aos-doctor",
+            "plugins/claude/bin/aos-doctor",
+            "plugins/grok/bin/aos-doctor",
+            "plugins/unicity-aos/bin/aos-doctor",
+        ):
+            body = (ROOT / path).read_text()
+            self.assertIn("Capsules may contribute durable", body, path)
+            self.assertIn("list_skills", body, path)
+            self.assertIn("read_skill", body, path)
+
     def test_retired_public_names_do_not_return(self) -> None:
         roots = [ROOT / "README.md", ROOT / "install.sh", ROOT / "plugins"]
         forbidden = {

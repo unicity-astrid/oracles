@@ -11,6 +11,14 @@ repository = "https://github.com/unicity-aos/oracles"
 license = "MIT OR Apache-2.0"
 aos-version = ">=2026.1.0"
 
+[[aos-capsule]]
+name = "aos-skills"
+availability = "required"
+
+[[aos-capsule]]
+name = "aos-forge"
+availability = "if-present"
+
 [[capsule]]
 name = "aos-mcp"
 asset = "aos-mcp.capsule"

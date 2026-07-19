@@ -248,4 +248,8 @@ Broker:     aos-mcp provisioned
 $DAEMON_NOTE
 
 Native host tools remain governed by the host application's own sandbox.
-Calls through mcp__aos__* additionally cross the AOS capability and audit boundary."
+Calls through mcp__aos__* additionally cross the AOS capability and audit boundary.
+
+Capsules may contribute durable, principal-scoped skills after this plugin was
+published. When list_skills is available, inspect dir_path \"skills\" and load
+relevant entries with read_skill."

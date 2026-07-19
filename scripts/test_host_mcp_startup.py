@@ -365,6 +365,9 @@ def exercise_doctor_waits_for_concurrent_bootstrap(host: str, root: Path) -> Non
     context = json.loads(stdout)["hookSpecificOutput"]["additionalContext"]
     assert "governed oracle session ready" in context
     assert str(spec["principal"]) in context
+    assert "Capsules may contribute durable, principal-scoped skills" in context
+    assert "list_skills" in context
+    assert "read_skill" in context
     attempt_count = len(attempts.read_text().splitlines())
     assert attempt_count in (1, 2), attempt_count
 
@@ -474,6 +477,7 @@ def exercise_abandoned_lock_recovery(
             assert stderr == "", stderr
             context = json.loads(stdout)["hookSpecificOutput"]["additionalContext"]
             assert "governed oracle session ready" in context
+            assert "Capsules may contribute durable, principal-scoped skills" in context
     finally:
         if lock_owner.poll() is None:
             lock_owner.terminate()

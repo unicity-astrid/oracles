@@ -25,8 +25,37 @@ mkdir -p "$product_assets/capsules"
 printf '%s\n' \
   aos-cli.capsule \
   aos-fs.capsule \
-  aos-openai-compat.capsule > "$product_assets/capsule-assets.txt"
-for capsule in aos-cli aos-fs aos-openai-compat; do
+  aos-openai-compat.capsule \
+  aos-skills.capsule \
+  aos-forge.capsule > "$product_assets/capsule-assets.txt"
+cat > "$product_assets/Distro.toml" <<'EOF'
+schema-version = 1
+
+[distro]
+id = "unicity-ce"
+version = "2026.1.0"
+
+[[capsule]]
+name = "aos-cli"
+source = "capsules/aos-cli.capsule"
+
+[[capsule]]
+name = "aos-fs"
+source = "capsules/aos-fs.capsule"
+
+[[capsule]]
+name = "aos-openai-compat"
+source = "capsules/aos-openai-compat.capsule"
+
+[[capsule]]
+name = "aos-skills"
+source = "capsules/aos-skills.capsule"
+
+[[capsule]]
+name = "aos-forge"
+source = "capsules/aos-forge.capsule"
+EOF
+for capsule in aos-cli aos-fs aos-openai-compat aos-skills aos-forge; do
   printf 'signed product fixture for %s\n' "$capsule" \
     > "$product_assets/capsules/$capsule.capsule"
 done
@@ -319,9 +348,13 @@ if grep -Fq -- '--inherit-from' "$TEST_LOG"; then
   exit 1
 fi
 grep -Eq 'capsule install .*/aos-mcp\.capsule' "$TEST_LOG"
+grep -Eq 'capsule install .*/releases/2026\.1\.0/capsules/aos-skills\.capsule --yes$' "$TEST_LOG"
+grep -Eq 'capsule install .*/releases/2026\.1\.0/capsules/aos-forge\.capsule --yes$' "$TEST_LOG"
 grep -Fq -- '--add-capsule aos-mcp' "$TEST_LOG"
+grep -Fq -- '--add-capsule aos-skills' "$TEST_LOG"
+grep -Fq -- '--add-capsule aos-forge' "$TEST_LOG"
 if grep -Eq '^aos --principal codex-code capsule install .*/aos-(cli|fs|openai-compat)\.capsule' "$TEST_LOG"; then
-  echo "oracle host provisioning installed a CE distribution capsule" >&2
+  echo "oracle host provisioning installed an undeclared CE distribution capsule" >&2
   exit 1
 fi
 grep -Fq "codex plugin marketplace add $AOS_HOME/extensions/oracles/plugins/0.2.2" "$TEST_LOG"
@@ -335,8 +368,84 @@ grep -Fq 'name = "aos-mcp"' \
 grep -Fq 'wasm-hash = "a2e772db86cbbc1a19a86033254f9379a01fe2c07258bc419793316f9d40e95e"' \
   "$AOS_HOME/extensions/oracles/codex/current/ManagedCapsules.toml"
 test -f "$TEST_STATE/installed-codex-code-aos-mcp"
+test -f "$TEST_STATE/installed-codex-code-aos-skills"
+test -f "$TEST_STATE/installed-codex-code-aos-forge"
 test -f "$TEST_STATE/granted-codex-code-aos-mcp"
+test -f "$TEST_STATE/granted-codex-code-aos-skills"
+test -f "$TEST_STATE/granted-codex-code-aos-forge"
 test ! -e "$AOS_HOME/extensions/oracles/.install.lock"
+
+# AOS-owned optional services are resolved from the active signed product
+# release. Older compatible AOS releases can omit Forge while the generic
+# skills index remains required and granted.
+without_forge_assets="$work/product-without-forge"
+without_forge_state="$work/state-without-forge"
+without_forge_home="$home/without-forge/.aos"
+mkdir -p "$without_forge_state"
+cp -R "$product_assets" "$without_forge_assets"
+rm "$without_forge_assets/capsules/aos-forge.capsule"
+grep -Fvx 'aos-forge.capsule' "$product_assets/capsule-assets.txt" \
+  > "$without_forge_assets/capsule-assets.txt"
+grep -Fv 'aos-forge' "$product_assets/Distro.toml" \
+  > "$without_forge_assets/Distro.toml"
+without_forge_start=$(wc -l < "$TEST_LOG")
+TEST_STATE="$without_forge_state" TEST_PRODUCT_ASSETS="$without_forge_assets" \
+  AOS_HOME="$without_forge_home" \
+  "$repo_root/install.sh" --host codex --yes --no-install-aos
+tail -n "+$((without_forge_start + 1))" "$TEST_LOG" > "$work/without-forge.log"
+grep -Fq -- '--add-capsule aos-skills' "$work/without-forge.log"
+if grep -Fq -- '--add-capsule aos-forge' "$work/without-forge.log"; then
+  echo "optional Forge was granted when the active AOS release did not ship it" >&2
+  exit 1
+fi
+test -f "$without_forge_state/installed-codex-code-aos-skills"
+test ! -e "$without_forge_state/installed-codex-code-aos-forge"
+
+without_skills_assets="$work/product-without-skills"
+without_skills_state="$work/state-without-skills"
+without_skills_home="$home/without-skills/.aos"
+mkdir -p "$without_skills_state"
+cp -R "$product_assets" "$without_skills_assets"
+rm "$without_skills_assets/capsules/aos-skills.capsule"
+grep -Fvx 'aos-skills.capsule' "$product_assets/capsule-assets.txt" \
+  > "$without_skills_assets/capsule-assets.txt"
+grep -Fv 'aos-skills' "$product_assets/Distro.toml" \
+  > "$without_skills_assets/Distro.toml"
+without_skills_start=$(wc -l < "$TEST_LOG")
+if TEST_STATE="$without_skills_state" TEST_PRODUCT_ASSETS="$without_skills_assets" \
+  AOS_HOME="$without_skills_home" \
+  "$repo_root/install.sh" --host codex --yes --no-install-aos
+then
+  echo "host pack accepted an AOS release without its required skills service" >&2
+  exit 1
+fi
+tail -n "+$((without_skills_start + 1))" "$TEST_LOG" > "$work/without-skills.log"
+if grep -Eq 'capsule install .*/aos-mcp\.capsule|^codex ' "$work/without-skills.log"; then
+  echo "required AOS dependency failure mutated the Oracle pack or host plugin" >&2
+  exit 1
+fi
+test ! -e "$without_skills_home/extensions/oracles/codex/current"
+
+# A same-ID user capsule is not a valid substitute for the signed AOS service.
+# Preserve it, but do not have the Oracle installer manufacture a new grant.
+local_skills_state="$work/state-local-skills"
+local_skills_home="$home/local-skills/.aos"
+mkdir -p "$local_skills_state"
+write_test_capsule "$local_skills_state" codex-code aos-skills \
+  aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+  /tmp/user/aos-skills.capsule \
+  2026-07-19T12:00:00+00:00 2026-07-19T12:00:00+00:00
+local_skills_start=$(wc -l < "$TEST_LOG")
+TEST_STATE="$local_skills_state" AOS_HOME="$local_skills_home" \
+  "$repo_root/install.sh" --host codex --yes --no-install-aos
+tail -n "+$((local_skills_start + 1))" "$TEST_LOG" > "$work/local-skills.log"
+if grep -Fq -- '--add-capsule aos-skills' "$work/local-skills.log"; then
+  echo "same-ID local skills capsule was auto-granted as an AOS dependency" >&2
+  exit 1
+fi
+test ! -e "$local_skills_state/granted-codex-code-aos-skills"
+test "$(sed -n '2p' "$local_skills_state/installed-codex-code-aos-skills")" \
+  = /tmp/user/aos-skills.capsule
 
 # Local development may stage only the selected host, provided every staged
 # byte has a strict checksum entry.
@@ -407,9 +516,9 @@ create=$(grep -n 'agent create codex-code' "$TEST_LOG" | head -n1 | cut -d: -f1)
 first_install=$(grep -n 'aos --principal codex-code capsule install' "$TEST_LOG" | head -n1 | cut -d: -f1)
 test "$create" -lt "$first_install"
 
-# Grok is a separate pack. Installing it provisions only grok-code and aos-mcp,
-# installs its own host plugin, writes its own receipt, and leaves any legacy
-# Astrid plugin state untouched.
+# Grok is a separate pack. Installing it provisions only grok-code, the Oracle
+# broker, and the signed pack's selected AOS services; it installs its own host
+# plugin, writes its own receipt, and leaves legacy Astrid plugin state alone.
 legacy_grok="$home/.grok/plugins/astrid/private-state"
 mkdir -p "$(dirname "$legacy_grok")"
 printf 'legacy grok plugin state\n' > "$work/grok-before"
@@ -420,6 +529,8 @@ tail -n "+$((grok_start + 1))" "$TEST_LOG" > "$work/grok-only.log"
 cmp "$work/grok-before" "$legacy_grok"
 grep -Eq 'capsule install .*/aos-mcp\.capsule$' "$work/grok-only.log"
 grep -Fq -- 'agent modify grok-code --add-capsule aos-mcp' "$work/grok-only.log"
+grep -Fq -- '--add-capsule aos-skills' "$work/grok-only.log"
+grep -Fq -- '--add-capsule aos-forge' "$work/grok-only.log"
 grep -Eq '^grok plugin install .*/plugins/grok --trust$' "$work/grok-only.log"
 if grep -Eq '^(codex|claude) ' "$work/grok-only.log"; then
   echo "Grok installation touched another oracle host" >&2
@@ -439,6 +550,8 @@ test -f "$AOS_HOME/extensions/oracles/claude/Pack.lock"
 tail -n "+$((claude_start + 1))" "$TEST_LOG" > "$work/claude-only.log"
 grep -Eq 'capsule install .*/aos-mcp\.capsule$' "$work/claude-only.log"
 grep -Fq -- 'agent modify claude-code --add-capsule aos-mcp' "$work/claude-only.log"
+grep -Fq -- '--add-capsule aos-skills' "$work/claude-only.log"
+grep -Fq -- '--add-capsule aos-forge' "$work/claude-only.log"
 grep -Fq 'claude plugin install unicity-aos@unicity-aos-oracles' "$TEST_LOG"
 grep -Fq "claude plugin marketplace add $AOS_HOME/extensions/oracles/plugins/0.2.2" "$TEST_LOG"
 if grep -Eq 'capsule install .*/claude-(install|runner)\.capsule' "$work/claude-only.log"; then
@@ -661,9 +774,25 @@ source = "capsules/aos-cli.capsule"
 [[capsule]]
 name = "aos-fs"
 source = "capsules/aos-fs.capsule"
+
+[[capsule]]
+name = "aos-skills"
+source = "capsules/aos-skills.capsule"
+
+[[capsule]]
+name = "aos-forge"
+source = "capsules/aos-forge.capsule"
 EOF
 : > "$legacy_home/releases/2026.1.1/capsules/aos-cli.capsule"
 : > "$legacy_home/releases/2026.1.1/capsules/aos-fs.capsule"
+: > "$legacy_home/releases/2026.1.1/capsules/aos-skills.capsule"
+: > "$legacy_home/releases/2026.1.1/capsules/aos-forge.capsule"
+printf '%s\n' \
+  aos-cli.capsule \
+  aos-fs.capsule \
+  aos-skills.capsule \
+  aos-forge.capsule \
+  > "$legacy_home/releases/2026.1.1/capsule-assets.txt"
 
 write_test_capsule "$legacy_state" codex-code aos-mcp \
   ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff \
