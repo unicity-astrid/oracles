@@ -153,14 +153,6 @@ const APPROVE_SESSION: &str = "approve_session";
 const APPROVE_ALWAYS: &str = "approve_always";
 const DENY: &str = "deny";
 
-/// Bound on the post-decision result drain in [`handle_mcp_approval`].
-/// The tool resumes (or denies) the instant the decision lands; its result
-/// is one bus hop away, so this only needs to cover scheduling latency, not
-/// a fresh tool runtime. Kept well under the host's 60 s approval window and
-/// the proxy's own request deadline so the shim gets a terminal reply
-/// promptly rather than hanging.
-const RESUME_TIMEOUT_MS: u64 = 50_000;
-
 /// Poll slice for the resume drain. Mirrors the execute-path slice cadence
 /// so a result published the instant the tool resumes is picked up within
 /// one short slice rather than blocking the whole budget on the first
@@ -931,12 +923,13 @@ fn resolve_with_decision(
 
 /// Drain `tool.v1.execute.<name>.result` for `call_id` after a decision,
 /// returning `(content, is_error)` for the first matching result or `None` on
-/// timeout. Bounded by [`RESUME_TIMEOUT_MS`]; polled in [`RESUME_SLICE_MS`]
-/// slices so a result published the instant the tool resumes is picked up
-/// promptly. Reuses the execute path's result-envelope parser so both legs
-/// agree on the wire shape.
+/// timeout. Bounded by the same per-principal
+/// `tool_execute_timeout_ms` setting as the initial dispatch and polled in
+/// [`RESUME_SLICE_MS`] slices so a result published the instant the tool
+/// resumes is picked up promptly. Reuses the execute path's result-envelope
+/// parser so both legs agree on the wire shape.
 fn drain_result(sub: &ipc::Subscription, call_id: &str) -> Option<(Value, bool)> {
-    let mut remaining = RESUME_TIMEOUT_MS;
+    let mut remaining = crate::execute::execute_timeout_ms();
     while remaining > 0 {
         let step = remaining.min(RESUME_SLICE_MS);
         match sub.recv(step) {

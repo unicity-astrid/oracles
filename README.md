@@ -79,6 +79,17 @@ The customer-facing server, broker capsule, and tool namespace are `aos`,
 behind that adapter: `astrid.v1.*`, `astrid-sdk`, the `astrid:*` WIT world, and
 the bundled runtime binaries retain their permanent names and provenance.
 
+Foreground tool calls remain open until the routed capsule returns or a
+configured deadline closes. The `aos-mcp` capsule's per-principal
+`tool_execute_timeout_ms` setting defaults to 50 seconds and may be raised to
+23 hours 55 minutes for local build workloads. Keep it below the principal
+profile's `quotas.max_timeout_secs`, and configure the `aos mcp serve` request
+timeout above the principal timeout, so the broker produces the terminal reply
+before either enclosing deadline. In short: broker drain < principal invocation
+< MCP shim < launching client. A timeout does not currently cancel an
+already-routed capsule call; durable continued work therefore needs an explicit
+job handle rather than an implicit shell background process.
+
 The Codex plugin separates three kinds of knowledge: the AOS operating model,
 capsule authoring through Forge, and proactive user-space world extension. See
 [Unicity AOS for Codex](plugins/unicity-aos/README.md) for the exact fresh-session

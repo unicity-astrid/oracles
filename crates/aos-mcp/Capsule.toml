@@ -38,6 +38,7 @@ kv = []
 # `crate::policy`.
 [env]
 policy_rules = { type = "string", default = "", request = "Per-principal policy rules as a JSON array (leave blank for none); see aos-mcp policy docs" }
+tool_execute_timeout_ms = { type = "integer", default = "50000", request = "Maximum broker wait for one routed tool result in milliseconds (1000 to 86100000; keep below the Astrid principal timeout)" }
 
 # aos-mcp describes the tool surface the host agent sees by querying the tool
 # registry and reshaping into MCP tool descriptors, and brokers tool

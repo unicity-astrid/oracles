@@ -27,13 +27,25 @@ use serde_json::{Value, json};
 
 use crate::approval::{self, ApprovalRequired, GrantRequired};
 
-/// Per-call drain window for the `tool.v1.execute.<name>.result` reply.
-/// Bounded well under the runner's 60 s `TOOL_CALL_DEADLINE` so the bridge
-/// times out first and synthesises a clean `isError:true` result rather
-/// than letting the supervisor's deadline-sweeper write back a generic
-/// "deadline exceeded" string. 50 s leaves comfortable headroom for the
-/// stdin write + bus hop on top of a worst-case tool runtime.
-const EXECUTE_TIMEOUT_MS: u64 = 50_000;
+/// Per-principal `[env]` key controlling the result-drain window.
+///
+/// This is read at every dispatch rather than cached: capsule configuration is
+/// overlaid per invocation/principal, so caching it would leak one principal's
+/// deadline policy into another principal's call.
+const EXECUTE_TIMEOUT_ENV: &str = "tool_execute_timeout_ms";
+
+/// Existing conservative drain window when the setting is absent or invalid.
+/// Long-running local agents may raise it explicitly; shared services retain
+/// today's bounded behavior by default.
+const DEFAULT_EXECUTE_TIMEOUT_MS: u64 = 50_000;
+
+/// A sub-second broker window is too short to cover normal scheduling and bus
+/// hops and is almost certainly an operator error.
+const MIN_EXECUTE_TIMEOUT_MS: u64 = 1_000;
+
+/// Absolute configuration ceiling (23 hours 55 minutes), leaving cancellation
+/// headroom below Astrid's 24-hour principal invocation timeout ceiling.
+const MAX_EXECUTE_TIMEOUT_MS: u64 = 86_100_000;
 
 /// Slice length for the result-drain loop. A single `recv(timeout)`
 /// would only pick up the first batch on the subscription; the loop
@@ -194,7 +206,8 @@ pub(crate) fn dispatch_with_approval(
     // bounded by the slice; we poll the approval sub non-blocking between
     // result slices so an approval published while we're parked on the
     // result `recv` is still seen within one slice.
-    let mut remaining = EXECUTE_TIMEOUT_MS;
+    let execute_timeout_ms = execute_timeout_ms();
+    let mut remaining = execute_timeout_ms;
     while remaining > 0 {
         let step = remaining.min(EXECUTE_SLICE_MS);
 
@@ -249,10 +262,49 @@ pub(crate) fn dispatch_with_approval(
     }
 
     DispatchOutcome::Failed(format!(
-        "{}: tool '{tool_name}' did not respond within {}s",
+        "{}: tool '{tool_name}' did not respond within {execute_timeout_ms}ms",
         crate::profile::log_tag(),
-        EXECUTE_TIMEOUT_MS / 1_000
     ))
+}
+
+/// Resolve the invoking principal's tool drain window.
+///
+/// Missing configuration preserves the historical 50-second behavior. A host
+/// read error or malformed/out-of-range value also falls back rather than
+/// bricking every tool call; both cases are logged so the degraded setting is
+/// visible to operators. The enclosing Astrid principal timeout remains the
+/// authoritative outer deadline.
+pub(crate) fn execute_timeout_ms() -> u64 {
+    match env::var_opt(EXECUTE_TIMEOUT_ENV) {
+        Ok(value) => match parse_execute_timeout_ms(value.as_deref()) {
+            Ok(timeout) => timeout,
+            Err(reason) => {
+                log::warn(format!(
+                    "{}: invalid {EXECUTE_TIMEOUT_ENV} ({reason}); using {DEFAULT_EXECUTE_TIMEOUT_MS}ms",
+                    crate::profile::log_tag()
+                ));
+                DEFAULT_EXECUTE_TIMEOUT_MS
+            }
+        },
+        Err(error) => {
+            log::warn(format!(
+                "{}: failed to read {EXECUTE_TIMEOUT_ENV}: {error:?}; using {DEFAULT_EXECUTE_TIMEOUT_MS}ms",
+                crate::profile::log_tag()
+            ));
+            DEFAULT_EXECUTE_TIMEOUT_MS
+        }
+    }
+}
+
+fn parse_execute_timeout_ms(value: Option<&str>) -> Result<u64, &'static str> {
+    let Some(raw) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(DEFAULT_EXECUTE_TIMEOUT_MS);
+    };
+    let timeout = raw.parse::<u64>().map_err(|_| "not an integer")?;
+    if !(MIN_EXECUTE_TIMEOUT_MS..=MAX_EXECUTE_TIMEOUT_MS).contains(&timeout) {
+        return Err("outside 1000..=86100000");
+    }
+    Ok(timeout)
 }
 
 /// Non-blocking single-drain poll of the shared `astrid.v1.approval`
@@ -664,6 +716,32 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn execute_timeout_defaults_and_accepts_bounded_values() {
+        assert_eq!(
+            parse_execute_timeout_ms(None),
+            Ok(DEFAULT_EXECUTE_TIMEOUT_MS)
+        );
+        assert_eq!(
+            parse_execute_timeout_ms(Some("")),
+            Ok(DEFAULT_EXECUTE_TIMEOUT_MS)
+        );
+        assert_eq!(parse_execute_timeout_ms(Some(" 90000 ")), Ok(90_000));
+        assert_eq!(
+            parse_execute_timeout_ms(Some("86100000")),
+            Ok(MAX_EXECUTE_TIMEOUT_MS)
+        );
+    }
+
+    #[test]
+    fn execute_timeout_rejects_unsafe_or_malformed_values() {
+        assert!(parse_execute_timeout_ms(Some("0")).is_err());
+        assert!(parse_execute_timeout_ms(Some("999")).is_err());
+        assert!(parse_execute_timeout_ms(Some("86100001")).is_err());
+        assert!(parse_execute_timeout_ms(Some("forever")).is_err());
+        assert!(parse_execute_timeout_ms(Some("-1")).is_err());
+    }
 
     #[test]
     fn tool_name_charset_rejects_path_traversal() {
