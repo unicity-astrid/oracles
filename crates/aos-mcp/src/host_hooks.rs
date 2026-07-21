@@ -9,7 +9,7 @@ const TOKEN_MIN_BYTES: usize = 32;
 const TOKEN_MAX_BYTES: usize = 128;
 
 #[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[cfg_attr(test, derive(Serialize))]
 struct HostHookRequest {
     schema_version: u8,
     principal_id: String,
@@ -442,6 +442,15 @@ mod tests {
         let decoded: HostHookResponse =
             serde_json::from_value(value).expect("deserialize additive response");
         assert!(validate_response_shape(&decoded).is_ok());
+    }
+
+    #[test]
+    fn request_accepts_future_additive_fields() {
+        let mut value = serde_json::to_value(request()).expect("serialize request");
+        value["future_metadata"] = serde_json::json!({"revision": 2});
+        let decoded: HostHookRequest =
+            serde_json::from_value(value).expect("deserialize additive request");
+        assert!(validate_request("codex", &decoded).is_ok());
     }
 
     #[test]

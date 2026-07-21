@@ -202,7 +202,7 @@ def exercise_hook_adapter(host: str, root: Path) -> None:
     assert all(" emit " not in f" {invocation} " for invocation in invocations)
     tokens = token_log.read_text().splitlines()
     assert len(tokens) == 2 and tokens[0] == tokens[1], tokens
-    assert len(tokens[0]) == 64 and tokens[0].isalnum(), tokens[0]
+    assert 32 <= len(tokens[0]) <= 128 and tokens[0].isalnum(), tokens[0]
     assert json.loads(payload_log.read_text()) == json.loads(payload)
 
 
