@@ -21,6 +21,11 @@ The MCP server independently exposes the tool surface granted to `codex-code` as
 `mcp__aos__*`. Installing the plugin therefore supplies both the knowledge of
 how to build and the governed tools for inspecting or changing the live OS.
 
+The MCP entry deliberately has no `cwd` override. It invokes the public AOS
+command from the Codex session's project directory, so that directory is the
+workspace attached to tool calls. Product state remains under `AOS_HOME`; it
+does not become the agent's working tree.
+
 Users and agents can add Skills after the plugin was published by placing valid
 entries in the workspace or the principal's `home://skills/`; `aos-skills`
 exposes them through `list_skills` and `read_skill`. Capsules remain free to

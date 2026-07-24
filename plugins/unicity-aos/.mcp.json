@@ -3,11 +3,9 @@
     "aos": {
       "command": "/bin/sh",
       "args": [
-        "./bin/aos-up",
-        "--principal",
-        "codex-code"
+        "-c",
+        "set -eu; if [ -n \"${AOS_BIN:-}\" ]; then aos=$AOS_BIN; elif [ -n \"${AOS_BIN_ROOT:-}\" ]; then aos=$AOS_BIN_ROOT/aos; elif [ -x \"${AOS_HOME:-$HOME/.aos}/bin/aos\" ]; then aos=${AOS_HOME:-$HOME/.aos}/bin/aos; else aos=$(command -v aos); fi; exec \"$aos\" --principal codex-code mcp serve"
       ],
-      "cwd": ".",
       "startup_timeout_sec": 305,
       "env_vars": [
         "AOS_HOME",

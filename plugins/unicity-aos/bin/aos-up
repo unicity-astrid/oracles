@@ -359,6 +359,9 @@ mcp_serve() {
     [ "$#" -eq 0 ] || shift
   fi
   principal="$(principal_id "$principal")"
+  # The MCP process belongs to the agent's project, not the product runtime
+  # directory entered while resolving/provisioning AOS.
+  CDPATH= cd -P -- "$HOST_WORKSPACE"
   exec "$AOS" --principal "$principal" mcp serve "$@"
 }
 

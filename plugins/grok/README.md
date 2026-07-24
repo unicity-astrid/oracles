@@ -29,6 +29,8 @@ installer. Grok can retry the MCP connection while provisioning continues. Once
 ready, the wrapper delegates to
 `aos --principal grok-code mcp serve`. Existing installations take the ready
 path without re-entering the installer.
+Before that handoff, it restores the project directory from which Grok launched
+the adapter, keeping AOS product state separate from the agent workspace.
 
 Visible tools use `mcp__aos__*`. The internal broker capsule remains
 `aos-mcp`, and its stable runtime topics remain `astrid.v1.*`.

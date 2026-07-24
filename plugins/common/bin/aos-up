@@ -332,4 +332,5 @@ esac
 # AOS owns daemon startup, runtime keys, authentication, and home selection.
 # Any post-commit principal/capsule failure remains visible on stderr with the
 # product CLI's recovery guidance.
+CDPATH= cd -P -- "$HOST_WORKSPACE"
 exec "$AOS" --principal "$PRINCIPAL" mcp serve "$@"

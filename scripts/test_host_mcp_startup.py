@@ -269,7 +269,7 @@ def exercise_host(host: str, root: Path) -> None:
     wait_gate.touch()
     assert_success(process)
 
-    assert Path(cwd_log.read_text().strip()) == (home / "runtime").resolve()
+    assert Path(cwd_log.read_text().strip()) == workspace.resolve()
     assert args_log.read_text().strip() == (
         f"--principal {spec['principal']} mcp serve"
     )
@@ -354,7 +354,7 @@ def exercise_blank_slate_bootstrap(host: str, root: Path) -> None:
     for other_host in HOSTS:
         receipt = home / f"extensions/oracles/{other_host}/Pack.lock"
         assert receipt.exists() == (other_host == host), receipt
-    assert Path(cwd_log.read_text().strip()) == (home / "runtime").resolve()
+    assert Path(cwd_log.read_text().strip()) == workspace.resolve()
     assert args_log.read_text().strip() == (
         f"--principal {spec['principal']} mcp serve"
     )

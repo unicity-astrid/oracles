@@ -20,6 +20,8 @@ commands, and the optional HUD.
 
 The adapter does not start a private daemon itself. The `aos` command owns the
 bundled runtime, authenticated principal selection, and quiet ephemeral startup.
+The launcher restores the host's original project directory before entering
+`mcp serve`; AOS product-state directories never replace the agent's workspace.
 On a blank slate, the MCP launcher starts the non-interactive host installer in
 the background and waits for the signed Claude pack receipt. SessionStart uses
 the same idempotent installer, so concurrent startup still performs one
